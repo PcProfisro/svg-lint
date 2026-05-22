@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Špecifikácia preprocesora · svg-lint</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg-page:    #b8e1eb;
+    --paper:      #ffffff;
+    --fg:         #085475;
+    --fg-soft:    #2d7591;
+    --fg-muted:   #6ba6ba;
+    --accent-warm:#f5a623;
+    --accent-pink:#e85a8e;
+    --accent-violet:#a371f7;
+    --good:       #1f8a5b;
+    --bad:        #d9534f;
+    --warn:       #b8860b;
+    --code-bg:    #0e3a4f;
+    --code-fg:    #e3f3f9;
+    --border:     color-mix(in srgb, #085475 18%, transparent);
+  }
+  html, body { margin: 0; background: var(--bg-page); color: var(--fg); font-family: 'Roboto', sans-serif; line-height: 1.6; }
+  * { box-sizing: border-box; }
+  .page {
+    max-width: 960px; margin: 0 auto; padding: 56px 56px;
+    background: var(--paper);
+    min-height: 100vh;
+    box-shadow: 0 0 60px rgba(9,84,117,0.10);
+  }
+  h1 { font: 900 38px/1.15 Roboto, sans-serif; margin: 0 0 8px; letter-spacing: -0.5px; }
+  h2 { font: 900 24px/1.2 Roboto, sans-serif; margin: 48px 0 14px; padding-top: 24px; border-top: 2px solid var(--border); display: flex; align-items: center; gap: 14px; }
+  h2 .num { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; height: 38px; padding: 0 10px; border-radius: 10px; background: var(--fg); color: #fff; font: 700 16px JetBrains Mono, monospace; }
+  h3 { font: 700 18px Roboto, sans-serif; margin: 28px 0 10px; color: var(--fg); }
+  h4 { font: 700 15px Roboto, sans-serif; margin: 18px 0 6px; color: var(--fg); }
+  p, li { font-size: 15px; color: var(--fg); }
+  ul, ol { padding-left: 22px; margin: 8px 0 16px; }
+  li { margin: 4px 0; }
+  li > code:first-child { font-weight: 700; }
+  code { font: 600 13.5px "JetBrains Mono", monospace; background: #f4f0e9; padding: 1.5px 6px; border-radius: 4px; color: var(--fg); }
+  pre { margin: 12px 0; background: var(--code-bg); color: var(--code-fg); padding: 18px 22px; border-radius: 12px; font: 500 13px/1.7 "JetBrains Mono", monospace; overflow-x: auto; }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  .lede { font-size: 17px; color: var(--fg-soft); margin: 0 0 32px; max-width: 70ch; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-page); font-weight: 700; font-size: 13px; letter-spacing: 0.3px; }
+  td code { font-size: 12.5px; }
+  .center { text-align: center; }
+  .status { font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 4px; display: inline-block; }
+  .status.good { background: #effaf3; color: var(--good); }
+  .status.warn { background: #fef4e1; color: var(--warn); }
+  .status.bad  { background: #fdf0ef; color: var(--bad); }
+
+  .callout {
+    margin: 16px 0;
+    padding: 14px 18px;
+    border-left: 4px solid var(--accent-warm);
+    background: #fef4a8;
+    border-radius: 0 10px 10px 0;
+    font-size: 14px;
+  }
+  .callout strong { color: #6a4a00; }
+  .callout.danger { border-left-color: var(--bad); background: #fdf0ef; }
+  .callout.danger strong { color: var(--bad); }
+  .callout.good { border-left-color: var(--good); background: #effaf3; }
+  .callout.good strong { color: var(--good); }
+  .callout.info { border-left-color: var(--accent-violet); background: #f3eafe; }
+  .callout.info strong { color: var(--accent-violet); }
+
+  .toc {
+    background: var(--bg-page);
+    padding: 18px 24px;
+    border-radius: 14px;
+    margin: 24px 0 36px;
+  }
+  .toc ol { margin: 4px 0 0; padding-left: 20px; }
+  .toc li { font-size: 14px; padding: 2px 0; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 18px 0 28px;
+  }
+  .stage {
+    flex: 1 1 200px;
+    background: var(--bg-page);
+    border-radius: 12px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .stage .badge {
+    font: 700 11px JetBrains Mono, monospace;
+    color: var(--fg-soft);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .stage .title {
+    font-weight: 700;
+    font-size: 15px;
+    margin-top: 4px;
+  }
+  .stage .desc {
+    font-size: 13px;
+    color: var(--fg-soft);
+    margin-top: 4px;
+    line-height: 1.45;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0 24px;
+  }
+  .compare .col {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 12px;
+    padding: 16px 18px;
+    font: 500 12.5px/1.65 "JetBrains Mono", monospace;
+    overflow-x: auto;
+  }
+  .compare .col h4 {
+    font: 700 12px JetBrains Mono, monospace;
+    color: #8db5c6;
+    margin: 0 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .compare .col.before { border-left: 4px solid var(--bad); }
+  .compare .col.after  { border-left: 4px solid var(--good); }
+  .compare pre { margin: 0; padding: 0; background: transparent; color: inherit; font-size: 12px; line-height: 1.6; }
+  .compare .hi { background: rgba(248,81,73,0.25); padding: 1px 3px; border-radius: 2px; }
+  .compare .hi-good { background: rgba(63,185,80,0.25); padding: 1px 3px; border-radius: 2px; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+    margin: 8px 0 12px;
+  }
+  .legend .item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bg-page);
+    border-radius: 6px;
+  }
+  .legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  .kbd { display: inline-block; padding: 1px 6px; background: #f4f0e9; border: 1px solid var(--border); border-radius: 4px; font: 600 12px JetBrains Mono, monospace; }
+
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; padding: 32px; max-width: none; }
+    h2 { break-before: page; }
+    h2:first-of-type { break-before: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<main class="page">
+
+<h1>Špecifikácia preprocesora &amp; SVGO</h1>
+<p class="lede">
+  Detailný popis automatických transformácií, ktoré aplikácia <strong>svg-lint</strong> aplikuje
+  na SVG súbor pri jeho načítaní — predtým, než spustí validáciu alebo vykreslí náhľad.
+  Beží v dvoch fázach: <strong>(A) vlastný preprocesor</strong> v prehliadači a <strong>(B) SVGO 3.x</strong>
+  optimalizácia spustená hneď za ním. Cieľom je premeniť „surový" Inkscape export
+  na omaľovánkové SVG podľa špecifikácie <em>SVG · Omaľovánka pre materskú školu (v1.1)</em>.
+</p>
+
+<div class="toc">
+  <strong>Obsah</strong>
+  <ol>
+    <li><a href="#prehlad">Prehľad behu a pipeline</a></li>
+    <li><a href="#krok1">Krok 1 — transformácie skupín (<code>transform</code>)</a></li>
+    <li><a href="#krok2">Krok 2 — clip-path a defs cleanup</a></li>
+    <li><a href="#krok3">Krok 3 — klasifikácia ciest (regióny vs. obrysy)</a></li>
+    <li><a href="#krok3a">3a — Vyfarbiteľné oblasti (<code>fill:#ff0000</code>)</a></li>
+    <li><a href="#krok3b">3b — Zamknuté obrysy (ostatné cesty so style)</a></li>
+    <li><a href="#svgo">Krok 4 — SVGO 3.x optimalizácia (automaticky)</a></li>
+    <li><a href="#nedotykame">Čo preprocesor <strong>nemení</strong></a></li>
+    <li><a href="#feedback">Spätná väzba pre používateľa</a></li>
+    <li><a href="#pripady">Špeciálne prípady a obmedzenia</a></li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="prehlad"><span class="num">1</span> Prehľad behu a pipeline</h2>
+
+<p>
+  Pri <strong>každom načítaní SVG súboru</strong> (drag &amp; drop, file picker, ukážka)
+  prejde obsah štyrmi fázami v presnom poradí. Fázy 1–3 sú vlastná logika svg-lint;
+  fáza 4 deleguje optimalizáciu na knižnicu <strong>SVGO 3.x</strong>, ktorá sa do prehliadača
+  načíta ako ES modul z CDN (esm.sh) pri prvom použití.
+</p>
+
+<div class="pipeline">
+  <div class="stage">
+    <div class="badge">Fáza 1</div>
+    <div class="title">Group transforms</div>
+    <div class="desc">Zapečie <code>translate(x,y)</code> do súradníc potomkov. Iné transformy odstráni. <em>(V aktuálnej verzii vypnuté — rieši to SVGO v kroku 4.)</em></div>
+  </div>
+  <div class="stage">
+    <div class="badge">Fáza 2</div>
+    <div class="title">Clip-path cleanup</div>
+    <div class="desc">Odstráni všetky <code>clip-path</code> atribúty, vymaže <code>&lt;clipPath&gt;</code> z <code>&lt;defs&gt;</code>, vyhodí prázdne <code>&lt;defs&gt;</code>.</div>
+  </div>
+  <div class="stage">
+    <div class="badge">Fáza 3</div>
+    <div class="title">Path klasifikácia</div>
+    <div class="desc">Každý <code>&lt;path&gt;</code> so <code>style="..."</code> klasifikuje ako vyfarbiteľnú oblasť alebo zamknutý obrys.</div>
+  </div>
+  <div class="stage" style="background: #f3eafe;">
+    <div class="badge" style="color: var(--accent-violet);">Fáza 4 (SVGO)</div>
+    <div class="title">SVGO optimalizácia</div>
+    <div class="desc">Zapečie transformy do path data, vyčistí defs, ID, čísla a metadata. Beží <strong>automaticky</strong> hneď za fázami 1–3.</div>
+  </div>
+</div>
+
+<p>
+  Poradie je zámerné: clip-path cleanup vyčistí nepotrebné defs ešte pred SVGO,
+  klasifikácia ciest priradí <code>data-region</code>/<code>data-locked</code>
+  predtým, než SVGO zaháji optimalizáciu (a tým chráni naše atribúty pred
+  odstránením). SVGO až nakoniec zapečie transformy a komprimuje súbor.
+</p>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="krok1"><span class="num">2</span> Krok 1 — transformácie skupín</h2>
+
+<p>
+  Inkscape pri exporte často obaľuje celý obsah do <code>&lt;g transform="translate(…)"&gt;</code>,
+  alebo používa zoskupené transformy pre logické vrstvy. Špecifikácia omaľovánky tieto
+  transformy <strong>zakazuje</strong> (sekcia 5), pretože komplikujú Vue spracovanie
+  a klikateľnosť. Preprocesor ich preto zlikviduje — ale s rozdielnou stratégiou
+  podľa typu transformácie:
+</p>
+
+<table>
+  <thead><tr><th>Typ transformácie</th><th>Akcia</th><th>Vizuálny dopad</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>translate(tx, ty)</code></td>
+      <td><span class="status good">zapeč do detí</span></td>
+      <td>žiadny — geometria zachovaná</td>
+    </tr>
+    <tr>
+      <td><code>translate(tx)</code> (jediný argument)</td>
+      <td><span class="status good">zapeč (ty = 0)</span></td>
+      <td>žiadny</td>
+    </tr>
+    <tr>
+      <td><code>scale(s)</code>, <code>rotate(…)</code>, <code>matrix(…)</code>, kompozitné</td>
+      <td><span class="status warn">iba odstráň</span></td>
+      <td>obsah sa môže vizuálne presunúť ⚠</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2.1 Zapečenie translate do detí</h3>
+
+<p>Pre <code>translate(tx, ty)</code> preprocesor pridá <code>(tx, ty)</code> ku všetkým absolútnym súradniciam priamych potomkov skupiny:</p>
+
+<table>
+  <thead><tr><th>Element</th><th>Modifikované atribúty</th></tr></thead>
+  <tbody>
+    <tr><td><code>&lt;path&gt;</code></td><td><code>d</code> — parsované command-by-command, posun aplikovaný na absolútne príkazy <code>M, L, H, V, C, S, Q, T, A</code>. Prvý <code>m</code> v ceste je tiež posunutý (SVG spec ho považuje za absolútny).</td></tr>
+    <tr><td><code>&lt;rect&gt;</code></td><td><code>x</code>, <code>y</code></td></tr>
+    <tr><td><code>&lt;circle&gt;</code>, <code>&lt;ellipse&gt;</code></td><td><code>cx</code>, <code>cy</code></td></tr>
+    <tr><td><code>&lt;line&gt;</code></td><td><code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code></td></tr>
+    <tr><td><code>&lt;polygon&gt;</code>, <code>&lt;polyline&gt;</code></td><td>každý druhý bod v <code>points</code> (x súradnice + ty na y)</td></tr>
+    <tr><td>vnorené <code>&lt;g&gt;</code></td><td>posun sa <em>predpenduje</em> pred jeho existujúci <code>transform</code> a vyrieši sa v ďalšej iterácii</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 Path-data baker — detaily implementácie</h3>
+
+<p>Parser <code>d</code> atribútu sa správa takto:</p>
+<ul>
+  <li>Tokenizuje reťazec na sekvenciu <strong>písmen (príkazy)</strong> a <strong>čísel (argumenty)</strong>.</li>
+  <li>Rešpektuje <strong>implicit repeat</strong>: ak po <code>M x y</code> nasleduje ďalšia dvojica čísel bez nového príkazu, druhá dvojica sa interpretuje ako <code>L</code> (a podobne pre <code>m → l</code>).</li>
+  <li>Pre <strong>absolútne</strong> príkazy (veľké písmená) sa <code>tx</code>/<code>ty</code> pripočíta ku každej zodpovedajúcej súradnici.</li>
+  <li>Pre <strong>relatívne</strong> príkazy (malé písmená) sa posun nepripočíta — ich súradnice sú od predchádzajúceho bodu, ktorý sa už posunul.</li>
+  <li><strong>Výnimka:</strong> úplne prvý ťah v ceste je vždy absolútny (bez ohľadu na case <code>m</code>/<code>M</code>), takže sa posunie.</li>
+  <li>Pre <code>H</code> sa pripočíta iba <code>tx</code>, pre <code>V</code> iba <code>ty</code>.</li>
+  <li>Pre <code>A</code> (arc) sa posunie iba koncový bod (posledné dva argumenty); polomery a rotácia ostávajú.</li>
+  <li>Výsledné čísla sú formátované na max. 4 desatinné miesta (zaokrúhľovanie + odstránenie zbytočných núl).</li>
+</ul>
+
+<h3>2.3 Príklad transformácie</h3>
+
+<div class="compare">
+  <div class="col before">
+    <h4>Vstup</h4>
+<pre>&lt;g transform="<span class="hi">translate(93.77, 145.55)</span>"&gt;
+  &lt;path d="M 0 0 H 841 V 595 Z"/&gt;
+  &lt;rect x="10" y="10" width="50" height="50"/&gt;
+  &lt;circle cx="0" cy="0" r="20"/&gt;
+&lt;/g&gt;</pre>
+  </div>
+  <div class="col after">
+    <h4>Výstup</h4>
+<pre>&lt;g&gt;
+  &lt;path d="M <span class="hi-good">93.77 145.55</span> H <span class="hi-good">934.77</span> V <span class="hi-good">740.55</span> Z"/&gt;
+  &lt;rect x="<span class="hi-good">103.77</span>" y="<span class="hi-good">155.55</span>" width="50" height="50"/&gt;
+  &lt;circle cx="<span class="hi-good">93.77</span>" cy="<span class="hi-good">145.55</span>" r="20"/&gt;
+&lt;/g&gt;</pre>
+  </div>
+</div>
+
+<h3>2.4 Iteratívne spracovanie</h3>
+<p>
+  Preprocesor opakuje cyklus „nájdi <code>g[transform]</code> → spracuj → opakuj"
+  až 100×, kým neostanú žiadne. Tým správne spracuje vnorené skupiny aj prípady,
+  kde počas baking-u vzniknú nové transformované skupiny.
+</p>
+
+<div class="callout danger">
+  <strong>Pozor — neznáme transformy:</strong> Ak <code>&lt;g&gt;</code> obsahuje
+  <code>scale(…)</code>, <code>rotate(…)</code>, <code>matrix(…)</code> alebo
+  kombinovaný transform, preprocesor atribút iba odstráni. Vizuálny obsah sa
+  v tomto prípade <strong>posunie</strong>. Banner v aplikácii to indikuje
+  značkou <code>⚠</code>.
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="krok2"><span class="num">3</span> Krok 2 — clip-path a defs cleanup</h2>
+
+<p>
+  Inkscape štandardne pridáva <code>&lt;clipPath&gt;</code> elementy pre orez
+  obsahu k hraniciam plátna. Pre omaľovánkové SVG s <code>viewBox="0 0 1024 1024"</code>
+  sú nepotrebné — viewBox sám zabezpečí orez. Špecifikácia ich navyše zakazuje
+  v sekcii 5 („Nepoužité <code>&lt;defs&gt;</code>, <code>&lt;clipPath&gt;</code> bloky").
+</p>
+
+<ol>
+  <li>Zo všetkých elementov sa odstráni atribút <code>clip-path="url(#…)"</code>.</li>
+  <li>Všetky <code>&lt;clipPath&gt;</code> elementy (vrátane tých v <code>&lt;defs&gt;</code>) sú odstránené — po kroku 1 sú nepoužité.</li>
+  <li>Ak po kroku 2 ostane <code>&lt;defs&gt;</code> prázdny, je tiež odstránený.</li>
+</ol>
+
+<div class="callout good">
+  <strong>Prečo je to bezpečné:</strong> <code>clip-path</code> v Inkscape exporte
+  reprezentuje obdĺžnik plátna. Jeho odstránenie znamená, že obsah za viewBoxom
+  bude viditeľný — ale viewBox má presne rovnaké hranice, takže žiadny pixel sa
+  reálne nestratí ani nepribudne.
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="krok3"><span class="num">4</span> Krok 3 — klasifikácia ciest</h2>
+
+<p>
+  Tento krok rozhoduje, či je daný <code>&lt;path&gt;</code> <strong>vyfarbiteľná oblasť</strong> alebo
+  <strong>statický obrys</strong>. Kľúčové pravidlo je úplne jednoduché:
+</p>
+
+<div class="callout info">
+  <strong>Rozhodovacie pravidlo:</strong><br>
+  Path má <code>style="..."</code> obsahujúci <code>fill:#ff0000</code> →
+  <span class="status good">vyfarbiteľná oblasť</span><br>
+  Path má <code>style="..."</code> BEZ <code>fill:#ff0000</code> →
+  <span class="status warn">zamknutý obrys</span><br>
+  Path nemá <code>style</code> atribút →
+  <span class="status">ponechaný bez zmeny</span>
+</div>
+
+<h3>Prečo práve „má style"?</h3>
+<p>
+  Inkscape pri exporte pridáva <code>style="…"</code> ku každej ceste, ktorá má
+  netriviálne výplne alebo strokes (typicky obsahuje aspoň <code>stroke-width</code>).
+  Naopak, predpripravené elementy (biele pozadie plátna, ručne pridané obrysy
+  s prezentačnými atribútmi) majú už hotové atribúty bez inline štýlu.
+  Toto pravidlo umožňuje preprocessoru rozlíšiť „raw Inkscape výstup" od
+  „už pripravených elementov" a tie druhé nedotknúť.
+</p>
+
+<h3>Detekcia červenej výplne</h3>
+<p>Regex <code>fill\s*:\s*(#ff0000|#f00|rgb(255,0,0)|red)</code> je <strong>tolerantný</strong> — akceptuje:</p>
+<ul>
+  <li><code>fill:#ff0000</code> a <code>fill:#FF0000</code> (case-insensitive)</li>
+  <li>krátky zápis <code>fill:#f00</code></li>
+  <li>kľúčové slovo <code>fill:red</code></li>
+  <li>RGB notáciu <code>fill:rgb(255, 0, 0)</code> s ľubovoľnými medzerami</li>
+  <li>voľné medzery okolo dvojbodky: <code>fill : #ff0000</code></li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="krok3a"><span class="num">4a</span> Vyfarbiteľné oblasti</h2>
+
+<p>Pre každý path s detekovanou červenou výplňou preprocesor vykoná:</p>
+
+<table>
+  <thead><tr><th>Akcia</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>zapamätaj <code>id</code></td>
+      <td>hodnota sa použije v ďalšom kroku ako názov regiónu</td>
+    </tr>
+    <tr>
+      <td>odstráň <code>id="…"</code></td>
+      <td>vyfarbiteľné oblasti nemajú mať <code>id</code> (špec)</td>
+    </tr>
+    <tr>
+      <td>odstráň <code>style="…"</code></td>
+      <td>celý style atribút (vrátane <code>stroke-width</code> a ďalších)</td>
+    </tr>
+    <tr>
+      <td>pridaj <code>data-region="<em>X</em>"</code></td>
+      <td>kde <code><em>X</em></code> je pôvodné <code>id</code>. Ak chýba, použije sa fallback <code>region-1</code>, <code>region-2</code>, …</td>
+    </tr>
+    <tr>
+      <td>pridaj <code>fill="#ffffff"</code></td>
+      <td>biela počiatočná výplň podľa špecifikácie</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="compare">
+  <div class="col before">
+    <h4>Vstup</h4>
+<pre>&lt;path
+   <span class="hi">style="fill:#ff0000;stroke-width:0.699765"</span>
+   d="m 128.05,161.12 c …"
+   <span class="hi">id="path88"</span> /&gt;</pre>
+  </div>
+  <div class="col after">
+    <h4>Výstup</h4>
+<pre>&lt;path
+   <span class="hi-good">data-region="path88"</span>
+   <span class="hi-good">fill="#ffffff"</span>
+   d="m 128.05,161.12 c …" /&gt;</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="krok3b"><span class="num">4b</span> Zamknuté obrysy</h2>
+
+<p>Pre každý ostatný path (so style, ale bez <code>fill:#ff0000</code>) preprocesor vykoná:</p>
+
+<table>
+  <thead><tr><th>Akcia</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td>odstráň <code>id="…"</code></td><td>nepotrebné v zamknutom obryse</td></tr>
+    <tr><td>odstráň <code>style="…"</code></td><td>vrátane pôvodného <code>stroke-width</code></td></tr>
+    <tr><td>pridaj <code>fill="#1a1a1a"</code></td><td>čierne vnútro krivky</td></tr>
+    <tr><td>pridaj <code>stroke="#1a1a1a"</code></td><td>čierny obrys</td></tr>
+    <tr><td>pridaj <code>stroke-width="4"</code></td><td>hrúbka 4 v jednotkách viewBoxu (1024)</td></tr>
+    <tr><td>pridaj <code>stroke-linecap="round"</code></td><td>zaoblené konce čiar</td></tr>
+    <tr><td>pridaj <code>stroke-linejoin="round"</code></td><td>zaoblené spoje</td></tr>
+    <tr><td>pridaj <code>data-locked="true"</code></td><td>(ak ešte nie je) — aplikácia path ignoruje pri klikoch</td></tr>
+  </tbody>
+</table>
+
+<div class="compare">
+  <div class="col before">
+    <h4>Vstup</h4>
+<pre>&lt;path
+   d="m 157.48,811.60 c …"
+   <span class="hi">id="path9"</span>
+   <span class="hi">style="stroke-width:1.29322"</span> /&gt;</pre>
+  </div>
+  <div class="col after">
+    <h4>Výstup</h4>
+<pre>&lt;path
+   d="m 157.48,811.60 c …"
+   <span class="hi-good">fill="#1a1a1a"</span>
+   <span class="hi-good">stroke="#1a1a1a"</span>
+   <span class="hi-good">stroke-width="4"</span>
+   <span class="hi-good">stroke-linecap="round"</span>
+   <span class="hi-good">stroke-linejoin="round"</span>
+   <span class="hi-good">data-locked="true"</span> /&gt;</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="svgo"><span class="num">5</span> Krok 4 — SVGO 3.x optimalizácia</h2>
+
+<p>
+  Hneď po dokončení vlastného preprocesora aplikácia automaticky spustí
+  <strong>SVGO 3.3.2</strong> (Scalable Vector Graphics Optimizer) priamo
+  v prehliadači. SVGO je štandardný nástroj na čistenie a kompresiu SVG;
+  v našom prípade plní dve úlohy: <strong>zapečenie transformov do path data</strong>
+  a <strong>celkové vyčistenie</strong> exportu (metadata, ID, nadbytočné čísla).
+</p>
+
+<div class="callout info">
+  <strong>Ako sa SVGO dostane do prehliadača:</strong> Knižnica je publikovaná pre
+  Node.js. V prehliadači sa načíta cez ESM dynamic import z
+  <code>https://esm.sh/svgo@3.3.2</code>. Pri prvom použití sa stiahne (~250 KB),
+  následne je cachovaná. Beh je synchrónny — výsledok je k dispozícii okamžite
+  po vyriešení promisy.
+</div>
+
+<h3>5.1 Konfigurácia pluginov</h3>
+
+<p>
+  Štandardný <code>preset-default</code> nepoužívame, lebo niektoré pluginy
+  v ňom (<code>inlineStyles</code>, <code>minifyStyles</code>) potrebujú
+  knižnicu <code>css-tree</code>, ktorá sa cez esm.sh nesprávne bundluje
+  (chyba <em>„Missed structure field in String node type definition"</em>).
+  Namiesto toho vymenovávame pluginy explicitne — len tie, ktoré reálne
+  potrebujeme a nemajú css-tree závislosť.
+</p>
+
+<table>
+  <thead><tr><th>Plugin</th><th>Účel</th></tr></thead>
+  <tbody>
+    <tr><td colspan="2" style="background: var(--bg-page); font-weight: 700;">Čistenie metadát</td></tr>
+    <tr><td><code>removeDoctype</code></td><td>Odstráni <code>&lt;!DOCTYPE&gt;</code> deklaráciu.</td></tr>
+    <tr><td><code>removeXMLProcInst</code></td><td>Odstráni <code>&lt;?xml version="1.0"?&gt;</code>.</td></tr>
+    <tr><td><code>removeComments</code></td><td>Odstráni XML komentáre.</td></tr>
+    <tr><td><code>removeMetadata</code></td><td>Odstráni <code>&lt;metadata&gt;</code> bloky.</td></tr>
+    <tr><td><code>removeEditorsNSData</code></td><td>Odstráni <code>xmlns:inkscape</code>, <code>xmlns:sodipodi</code> a podobné editorské namespacy.</td></tr>
+    <tr><td><code>removeTitle</code>, <code>removeDesc</code></td><td>Odstráni <code>&lt;title&gt;</code> a <code>&lt;desc&gt;</code>.</td></tr>
+    <tr><td><code>removeDimensions</code></td><td>Odstráni <code>width</code>/<code>height</code> z root <code>&lt;svg&gt;</code> (viewBox zostáva).</td></tr>
+
+    <tr><td colspan="2" style="background: var(--bg-page); font-weight: 700;">Štruktúrne čistenie</td></tr>
+    <tr><td><code>removeUselessDefs</code></td><td>Odstráni nepoužité elementy v <code>&lt;defs&gt;</code>.</td></tr>
+    <tr><td><code>removeEmptyAttrs</code></td><td>Odstráni atribúty s prázdnou hodnotou.</td></tr>
+    <tr><td><code>removeEmptyContainers</code></td><td>Odstráni prázdne <code>&lt;g&gt;</code> a podobné kontajnery.</td></tr>
+    <tr><td><code>removeEmptyText</code></td><td>Odstráni prázdne <code>&lt;text&gt;</code> elementy.</td></tr>
+    <tr><td><code>removeHiddenElems</code></td><td>Odstráni elementy s <code>display:none</code>, <code>visibility:hidden</code>, <code>opacity="0"</code>.</td></tr>
+    <tr><td><code>removeUnknownsAndDefaults</code></td><td>Odstráni neznáme elementy/atribúty a hodnoty rovné default. Predvolene zachováva <code>data-*</code> atribúty.</td></tr>
+    <tr><td><code>removeNonInheritableGroupAttrs</code></td><td>Odstráni z <code>&lt;g&gt;</code> atribúty, ktoré sa nededia.</td></tr>
+    <tr><td><code>cleanupEnableBackground</code></td><td>Odstráni nepoužité <code>enable-background</code> atribúty.</td></tr>
+    <tr><td><code>cleanupAttrs</code></td><td>Vyčistí biele znaky a nepotrebné znaky v atribútoch.</td></tr>
+    <tr><td><code>convertEllipseToCircle</code></td><td>Ak má <code>&lt;ellipse&gt;</code> rovnaké <code>rx</code> a <code>ry</code>, konvertuje ho na <code>&lt;circle&gt;</code>.</td></tr>
+    <tr><td><code>moveElemsAttrsToGroup</code></td><td>Spoločné atribúty súrodencov vyzdvihne na rodičovský <code>&lt;g&gt;</code>.</td></tr>
+
+    <tr><td colspan="2" style="background: var(--bg-page); font-weight: 700;">Zapečenie transformov (kľúčové)</td></tr>
+    <tr><td><code>moveGroupAttrsToElems</code></td><td>Atribúty zo skupiny (vrátane <code>transform</code>) presunie na jej deti.</td></tr>
+    <tr><td><code>collapseGroups</code></td><td>Zlúči alebo odstráni nepotrebné <code>&lt;g&gt;</code> obaľky a deleguje ich atribúty (transform, fill, …) na deti.</td></tr>
+    <tr><td><code>convertTransform</code></td><td>Skráti transform reťazce: <code>matrix(…)</code> → <code>translate(…)</code>/<code>scale(…)</code>/<code>rotate(…)</code> kdekoľvek je to možné, zlúči viaceré transformy do jedného.</td></tr>
+    <tr><td><code>convertPathData</code></td><td>Najdôležitejší plugin: zapečie <code>transform</code> z elementu priamo do <code>d</code> atribútu, prepočíta súradnice na úsporný formát, zachová <code>Z</code> uzávery.</td></tr>
+
+    <tr><td colspan="2" style="background: var(--bg-page); font-weight: 700;">Numerika a ID</td></tr>
+    <tr><td><code>cleanupNumericValues</code></td><td>Zaokrúhli desatinné čísla na <code>floatPrecision: 2</code>.</td></tr>
+    <tr><td><code>cleanupIds</code></td><td>Odstráni nepoužité <code>id</code> atribúty a premenuje použité na krátke (<code>a</code>, <code>b</code>, …).</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 Detailné parametre transformových pluginov</h3>
+
+<pre><code>convertTransform: {
+  convertToShorts:    true,   // matrix → translate/scale/rotate kde sa dá
+  floatPrecision:     3,      // desatinky pri transformoch (3 = bezpečné)
+  transformPrecision: 5,      // vnútorná presnosť pri prepočtoch
+  matrixToTransform:  true,   // explicitne rozloženie matrix
+  shortTranslate:     true,   // translate(5, 0) → translate(5)
+  shortScale:         true,
+  shortRotate:        true,
+  removeUseless:      true,   // odstráni jednotkové (identity) transformy
+  collapseIntoOne:    true,   // viaceré transformy → jeden
+}
+
+convertPathData: {
+  floatPrecision:        2,   // desatinky v d="..."
+  applyTransforms:       true,// ⚡ zapečí transform do d
+  applyTransformsStroked:true,// aj keď má path stroke
+  makeArcs: { threshold: 2.5, tolerance: 0.5 },
+  removeUseless:         false, // ⚠ NEzhadzuj Z koncovky
+}</code></pre>
+
+<div class="callout">
+  <strong>Prečo <code>removeUseless: false</code>?</strong>
+  SVGO by inak agresívne odstránil príkazy, ktoré považuje za nadbytočné — vrátane
+  niektorých <code>Z</code> uzáverov. Pre omaľovánku potrebujeme, aby každá oblasť
+  bola uzavretá, inak farba pretečie. Preto ten flag explicitne vypíname.
+</div>
+
+<h3>5.3 Vypnuté pluginy</h3>
+
+<p>Plugin sa nezahrnul, pretože:</p>
+
+<table>
+  <thead><tr><th>Plugin</th><th>Dôvod vynechania</th></tr></thead>
+  <tbody>
+    <tr><td><code>inlineStyles</code>, <code>minifyStyles</code></td><td>Vyžadujú css-tree — chyba pri bundle z esm.sh.</td></tr>
+    <tr><td><code>removeUselessStrokeAndFill</code></td><td>Vyžaduje css-tree pre niektoré branche.</td></tr>
+    <tr><td><code>convertColors</code></td><td>Nepotrebné — preprocesor explicitne nastavil farby (<code>#ffffff</code>, <code>#1a1a1a</code>).</td></tr>
+    <tr><td><code>mergePaths</code></td><td>Zlúčil by viaceré <code>data-region</code> ciest do jednej — to by zničilo klikateľnosť oblastí.</td></tr>
+    <tr><td><code>removeViewBox</code></td><td>Pre Vue aplikáciu je viewBox potrebný.</td></tr>
+    <tr><td><code>convertShapeToPath</code></td><td>Nie je v zozname; <code>&lt;rect&gt;</code> a <code>&lt;circle&gt;</code> môžu zostať ako sú.</td></tr>
+    <tr><td><code>sortAttrs</code></td><td>Estetická úprava — neprináša funkčný benefit, vynechané pre kratší pipeline.</td></tr>
+    <tr><td><code>prefixIds</code></td><td>Potrebné pri inline SVG vo viacerých inštanciách; v našom prípade nie.</td></tr>
+  </tbody>
+</table>
+
+<h3>5.4 Príklad výstupu</h3>
+
+<div class="compare">
+  <div class="col before">
+    <h4>Po preprocesore (pred SVGO)</h4>
+<pre>&lt;svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1024 1024"
+     width="1024" height="1024"
+     xmlns:inkscape="…"&gt;
+  &lt;defs id="defs1"&gt;
+    &lt;clipPath id="path1"&gt;…&lt;/clipPath&gt;
+  &lt;/defs&gt;
+  <span class="hi">&lt;g transform="translate(93.77, 145.55)" id="g1"&gt;</span>
+    &lt;path data-region="path88" fill="#ffffff"
+          d="m 128.05,161.12 c -8.71,…"/&gt;
+    &lt;path data-locked="true" …
+          d="m 157.48,811.60 c -12.86,…"/&gt;
+  <span class="hi">&lt;/g&gt;</span>
+&lt;/svg&gt;</pre>
+  </div>
+  <div class="col after">
+    <h4>Po SVGO</h4>
+<pre>&lt;svg viewBox="0 0 1024 1024"
+     xmlns="http://www.w3.org/2000/svg"&gt;
+  &lt;path data-region="path88" fill="#ffffff"
+        d="m <span class="hi-good">221.82,306.67</span> c -8.71,…"/&gt;
+  &lt;path data-locked="true" …
+        d="m <span class="hi-good">251.25,957.15</span> c -12.86,…"/&gt;
+&lt;/svg&gt;</pre>
+  </div>
+</div>
+
+<p>
+  Všimnite si: <code>width</code>/<code>height</code> sú preč, <code>xmlns:inkscape</code>
+  je preč, <code>&lt;defs&gt;</code> s nepoužitým clipPath je preč, <code>id</code>
+  atribúty sú preč, <code>&lt;g transform="..."&gt;</code> je rozpustený a posun je
+  zapečený priamo v <code>d</code> hodnotách (<code>128.05 + 93.77 = 221.82</code>,
+  <code>161.12 + 145.55 = 306.67</code>). <strong>data-region</strong> a
+  <strong>data-locked</strong> sú zachované.
+</p>
+
+<h3>5.5 Spätná väzba a chyby</h3>
+
+<p>
+  Po dokončení SVGO sa do banneru pripojí druhá časť:
+</p>
+<pre><code>⚡ Preprocesor: <strong>20</strong> oblastí, <strong>94</strong> obrysov
+   · SVGO: <strong>47.0</strong> KB → <strong>18.5</strong> KB (−28.5 KB)</code></pre>
+
+<p>
+  Ak by SVGO zlyhal (napr. výpadok esm.sh, sieťová chyba, nečakaný edge case
+  v SVG), preprocesor pokračuje bez optimalizácie a chyba sa zapíše do
+  konzole prehliadača. Výsledok kroku 1–3 je naďalej k dispozícii. Manuálne
+  spustenie je možné tlačidlom <strong>„Spustiť SVGO"</strong> v dolnom paneli.
+</p>
+
+
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="nedotykame"><span class="num">6</span> Čo preprocesor nemení</h2>
+
+<p>Preprocesor je zámerne <strong>konzervatívny</strong>. Neturbuje:</p>
+<ul>
+  <li>Atribúty na koreňovom <code>&lt;svg&gt;</code> (<code>viewBox</code>, <code>width</code>, <code>height</code>) — to rieši validátor a auto-fix.</li>
+  <li>Elementy <code>&lt;rect&gt;</code>, <code>&lt;circle&gt;</code>, <code>&lt;ellipse&gt;</code>, <code>&lt;polygon&gt;</code> — ich vlastnosti zostávajú, posúvajú sa iba pri zapečení translate (krok 1).</li>
+  <li>Cesty <code>&lt;path&gt;</code> <strong>bez</strong> atribútu <code>style</code> — sú považované za už hotové (typicky biele pozadie alebo manuálne pridané obrysy).</li>
+  <li>Cesty, ktoré už majú <code>data-region</code> alebo <code>data-locked</code> — atribúty sa neprepisujú (kontrola pred pridaním).</li>
+  <li><code>&lt;linearGradient&gt;</code>, <code>&lt;radialGradient&gt;</code>, <code>&lt;filter&gt;</code>, <code>&lt;pattern&gt;</code>, <code>&lt;mask&gt;</code>, <code>&lt;style&gt;</code> bloky, <code>class</code> atribúty, inline <code>style</code> mimo path-ov — toto rieši validátor a auto-fix.</li>
+  <li>Komentáre, <code>&lt;title&gt;</code>, <code>&lt;desc&gt;</code>, <code>&lt;metadata&gt;</code> — sú iba <em>nahlásené</em> validátorom ako info.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="feedback"><span class="num">7</span> Spätná väzba pre používateľa</h2>
+
+<p>Po načítaní súboru sa nad zoznamom validačných problémov zobrazí <strong>fialový banner</strong> so súhrnom oboch fáz (preprocesor + SVGO):</p>
+
+<pre><code>⚡ Preprocesor: <strong>20</strong> oblastí, <strong>94</strong> obrysov,
+   <strong>8</strong>× clipPath odstránený
+   · SVGO: <strong>47.0</strong> KB → <strong>18.5</strong> KB (−28.5 KB)</code></pre>
+
+<p>
+  Časti banneru sa zobrazujú iba ak boli vykonané (počet &gt; 0). SVGO časť sa
+  zobrazí vždy, ak optimalizácia prebehla úspešne. Pre nepodporované transformácie
+  vo fáze 1 sa pridal prišlo by sa pridalý varovný znak ⚠ — v aktuálnej verzii je
+  však fáza 1 vypnutá, takže tento znak by sa nemal objaviť.
+</p>
+
+<p>Banner sa dá zatvoriť krížikom; ďalšie načítanie ho znovu vyvolá.</p>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="pripady"><span class="num">8</span> Špeciálne prípady a obmedzenia</h2>
+
+<h3>8.1 Súbor bez žiadnych <code>style</code> atribútov</h3>
+<p>
+  Ak SVG neobsahuje ani jeden <code>&lt;path style="…"&gt;</code>, preprocesor neurobí nič
+  v kroku 3. Súbor však môže byť stále spracovaný v krokoch 1 a 2 (transformy, clip-path).
+</p>
+
+<h3>8.2 Path s viacerými výplňami v style</h3>
+<p>
+  Detekcia hľadá <code>fill:</code> regex-om — ak je v style napr.
+  <code>style="opacity:0.5;fill:#ff0000;stroke:red"</code>, path bude klasifikovaný ako región.
+  Ostatné CSS vlastnosti (<code>opacity</code>, <code>stroke</code>…) sa <strong>stratia</strong>,
+  pretože celý <code>style</code> sa nahradí. Toto je v poriadku — špecifikácia inline style
+  zakazuje a opacity na regiónoch tiež.
+</p>
+
+<h3>8.3 Nepodporované transformy</h3>
+<p>
+  <code>scale(0.5)</code>, <code>rotate(45)</code>, <code>matrix(a,b,c,d,e,f)</code> a kombinácie
+  ako <code>translate(10,20) scale(2)</code> sa <strong>nezapečú</strong>. Preprocesor ich
+  iba odstráni. Pre takéto súbory je správny postup:
+</p>
+<ul>
+  <li>V Inkscape: vyber skupinu → <kbd>Object → Ungroup</kbd> (Ctrl+Shift+G) — transformy sa zapečú</li>
+  <li>Alebo v Preferences → Transforms → <em>Store transformation: Optimized</em> a uložiť znova</li>
+</ul>
+
+<h3>8.4 Path-data parser — okrajové prípady</h3>
+<ul>
+  <li>Komentáre v <code>d</code> atribúte (napr. <code>/* … */</code>) nie sú SVG-validné a parser na ne nereaguje korektne.</li>
+  <li>Exponenciálny zápis (<code>1.5e-3</code>) je podporovaný.</li>
+  <li>Záporné znamienko bez medzery (<code>10,-5</code>) je podporované.</li>
+  <li>Veľmi dlhé cesty (&gt; 100 000 tokenov) sú spracované, ale zaberú viac CPU. Parser má safety counter <code>tokens.length × 2</code>, takže nikdy nezacyklí.</li>
+</ul>
+
+<h3>8.5 Idempotencia</h3>
+<p>
+  Druhé spustenie preprocesora nad rovnakým súborom <strong>neurobí žiadne zmeny</strong>:
+  všetky path-y so style sú už spracované (nemajú style), všetky transformy a clip-path
+  sú odstránené. Banner sa nezobrazí.
+</p>
+
+<h3>8.6 Nezmenené elementy podľa typu</h3>
+<table>
+  <thead><tr><th>Tag</th><th>V kroku 1</th><th>V kroku 2</th><th>V kroku 3</th></tr></thead>
+  <tbody>
+    <tr><td><code>&lt;path&gt;</code></td><td>posun súradníc v <code>d</code></td><td>—</td><td>klasifikácia (oblasť/obrys/skip)</td></tr>
+    <tr><td><code>&lt;rect&gt;</code></td><td>posun <code>x</code>, <code>y</code></td><td>—</td><td>—</td></tr>
+    <tr><td><code>&lt;circle&gt;</code>, <code>&lt;ellipse&gt;</code></td><td>posun <code>cx</code>, <code>cy</code></td><td>—</td><td>—</td></tr>
+    <tr><td><code>&lt;line&gt;</code></td><td>posun <code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code></td><td>—</td><td>—</td></tr>
+    <tr><td><code>&lt;polygon&gt;</code>, <code>&lt;polyline&gt;</code></td><td>posun všetkých bodov v <code>points</code></td><td>—</td><td>—</td></tr>
+    <tr><td><code>&lt;g&gt;</code></td><td>odstránenie <code>transform</code></td><td>odstránenie <code>clip-path</code></td><td>—</td></tr>
+    <tr><td><code>&lt;clipPath&gt;</code></td><td>—</td><td>odstránené</td><td>—</td></tr>
+    <tr><td><code>&lt;defs&gt;</code></td><td>—</td><td>odstránený ak prázdny</td><td>—</td></tr>
+    <tr><td><code>&lt;text&gt;</code>, <code>&lt;use&gt;</code>, <code>&lt;image&gt;</code></td><td>nedotknuté ⚠</td><td>—</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>Tip pre vývojárov:</strong> Implementácia je v súbore <code>preprocessor.js</code>.
+  Hlavná funkcia <code>SvgPreprocessor.preprocess(svgText)</code> vracia objekt:
+<pre style="margin-top: 8px;"><code>{
+  text: string,              // serializovaný SVG po zmenách
+  changes: number,           // počet vyfarbiteľných oblastí
+  locked: number,            // počet zamknutých obrysov
+  transformsBaked: number,   // koľko translate-ov bolo zapečených
+  transformsStripped: number,// koľko iných transformov bolo odstránených
+  clipAttrsRemoved: number,
+  clipDefsRemoved: number,
+  log: [{ id, region }, …]   // mapovanie pôvodných id → data-region
+}</code></pre>
+</div>
+
+</main>
+
+</body>
+</html>

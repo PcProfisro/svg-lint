@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SVG špecifikácia v1.1 · Omaľovánka pre materskú školu</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg-page:    #b8e1eb;
+    --paper:      #ffffff;
+    --fg:         #085475;
+    --fg-soft:    #2d7591;
+    --fg-muted:   #6ba6ba;
+    --accent-warm:#f5a623;
+    --accent-pink:#e85a8e;
+    --good:       #1f8a5b;
+    --bad:        #d9534f;
+    --warn:       #b8860b;
+    --code-bg:    #0e3a4f;
+    --code-fg:    #e3f3f9;
+    --border:     color-mix(in srgb, #085475 18%, transparent);
+  }
+  html, body { margin: 0; background: var(--bg-page); color: var(--fg); font-family: 'Roboto', sans-serif; line-height: 1.6; }
+  * { box-sizing: border-box; }
+  .page {
+    max-width: 920px; margin: 0 auto; padding: 56px 48px;
+    background: var(--paper);
+    min-height: 100vh;
+    box-shadow: 0 0 60px rgba(9,84,117,0.10);
+  }
+  h1 { font: 900 36px/1.15 Roboto, sans-serif; margin: 0 0 8px; letter-spacing: -0.5px; }
+  h2 { font: 900 24px/1.2 Roboto, sans-serif; margin: 44px 0 14px; padding-top: 24px; border-top: 2px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--fg); color: #fff; font: 700 16px JetBrains Mono, monospace; }
+  h3 { font: 700 18px Roboto, sans-serif; margin: 24px 0 8px; color: var(--fg); }
+  p, li { font-size: 15px; color: var(--fg); }
+  ul, ol { padding-left: 22px; margin: 8px 0 16px; }
+  li { margin: 4px 0; }
+  code { font: 600 13.5px "JetBrains Mono", monospace; background: #f4f0e9; padding: 1.5px 6px; border-radius: 4px; color: var(--fg); }
+  pre { margin: 12px 0; background: var(--code-bg); color: var(--code-fg); padding: 18px 22px; border-radius: 12px; font: 500 13px/1.7 "JetBrains Mono", monospace; overflow-x: auto; }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  .lede { font-size: 17px; color: var(--fg-soft); margin: 0 0 32px; max-width: 70ch; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0 18px; }
+  .card { padding: 16px 18px; border-radius: 14px; border: 1px solid var(--border); background: #fafafa; }
+  .card h4 { margin: 0 0 8px; font: 700 14px Roboto, sans-serif; display: flex; align-items: center; gap: 8px; }
+  .card.good { background: #effaf3; border-color: #c8ecd5; }
+  .card.bad  { background: #fdf0ef; border-color: #f3cfcd; }
+  .card.good h4 { color: var(--good); }
+  .card.bad  h4 { color: var(--bad); }
+  .card ul { margin: 0; padding-left: 18px; }
+  .card li { font-size: 13.5px; line-height: 1.55; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-page); font-weight: 700; font-size: 13px; letter-spacing: 0.3px; }
+  td code { font-size: 12.5px; }
+  td.center { text-align: center; }
+  .status { font-weight: 700; font-size: 13px; }
+  .status.req  { color: var(--bad); }
+  .status.rec  { color: var(--warn); }
+  .status.opt  { color: var(--fg-soft); }
+  .status.good { color: var(--good); }
+
+  .checklist {
+    background: var(--bg-page);
+    padding: 24px 28px;
+    border-radius: 16px;
+    margin: 16px 0 24px;
+  }
+  .checklist h3 { margin-top: 0; }
+  .checklist ul { list-style: none; padding-left: 0; }
+  .checklist li { font-size: 14.5px; padding: 6px 0 6px 32px; position: relative; }
+  .checklist li::before {
+    content: '';
+    position: absolute; left: 0; top: 9px;
+    width: 20px; height: 20px;
+    border: 2px solid var(--fg); border-radius: 5px;
+    background: #fff;
+  }
+
+  .callout {
+    margin: 16px 0;
+    padding: 14px 18px;
+    border-left: 4px solid var(--accent-warm);
+    background: #fef4a8;
+    border-radius: 0 10px 10px 0;
+    font-size: 14px;
+  }
+  .callout strong { color: #6a4a00; }
+  .callout.danger { border-left-color: var(--bad); background: #fdf0ef; }
+  .callout.danger strong { color: var(--bad); }
+  .callout.good { border-left-color: var(--good); background: #effaf3; }
+  .callout.good strong { color: var(--good); }
+
+  .kbd { display: inline-block; padding: 1px 6px; background: #f4f0e9; border: 1px solid var(--border); border-radius: 4px; font: 600 12px JetBrains Mono, monospace; }
+
+  .toc {
+    background: var(--bg-page);
+    padding: 18px 24px;
+    border-radius: 14px;
+    margin: 24px 0 36px;
+  }
+  .toc ol { margin: 4px 0 0; padding-left: 20px; }
+  .toc li { font-size: 14px; padding: 2px 0; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; padding: 32px; max-width: none; }
+    h2 { break-before: page; }
+    h2:first-of-type { break-before: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<main class="page">
+
+<h1>SVG špecifikácia · Omaľovánka pre materskú školu</h1>
+<p class="lede">
+  Kompletné technické požiadavky pre SVG súbory, ktoré budú slúžiť ako podklady
+  omaľovánok v našej Vue aplikácii. Tento dokument je určený ilustrátorom (ako
+  pripraviť obrázok) aj programátorom (čo od súborov očakávať a ako nastaviť interakciu).
+</p>
+
+<div class="toc">
+  <strong>Obsah (Verzia 1.1)</strong>
+  <ol>
+    <li><a href="#zaklad">Základné požiadavky na súbor</a></li>
+    <li><a href="#oblasti">Vyfarbiteľné oblasti a dôležitosť výplne</a></li>
+    <li><a href="#obrysy">Obrysy, uzavretosť kriviek a riadenie kliknutí</a></li>
+    <li><a href="#zamknute">Zamknuté detaily (oči, fúzy…)</a></li>
+    <li><a href="#zakazane">Zakázané prvky a pravidlá pre skupiny</a></li>
+    <li><a href="#pomenovanie">Pomenovanie súborov, regiónov a prístupnosť</a></li>
+    <li><a href="#vrstvenie">Poradie vrstvenia</a></li>
+    <li><a href="#priklad">Príklad výsledného SVG</a></li>
+    <li><a href="#canva">Špeciálne tipy pre Canvu</a></li>
+    <li><a href="#postup">Postup čistenia v Inkscape + SVGO</a></li>
+    <li><a href="#checklist">Checklist pred odovzdaním</a></li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="zaklad"><span class="num">1</span> Základné požiadavky na súbor</h2>
+
+<table>
+  <thead><tr><th>Atribút / vlastnosť</th><th>Hodnota</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Formát</td><td>Plain SVG (nie Inkscape SVG, nie Canva SVG)</td><td><span class="status req">Povinné</span></td></tr>
+    <tr><td>Pomer strán</td><td><strong>1:1 (štvorec)</strong></td><td><span class="status req">Povinné</span></td></tr>
+    <tr><td><code>viewBox</code></td><td><code>"0 0 1024 1024"</code></td><td><span class="status req">Povinné</span></td></tr>
+    <tr><td><code>width</code>, <code>height</code> na root <code>&lt;svg&gt;</code></td><td>Neuvádzať (riadi sa cez CSS v aplikácii)</td><td><span class="status req">Povinné</span></td></tr>
+    <tr><td>XML deklarácia</td><td><code>&lt;?xml version="1.0"?&gt;</code> nepotrebná</td><td><span class="status opt">Voliteľné</span></td></tr>
+    <tr><td>Maximálna veľkosť súboru</td><td>~ 100 KB po čistení (typicky 10-40 KB)</td><td><span class="status rec">Odporúčané</span></td></tr>
+    <tr><td>Kódovanie</td><td>UTF-8</td><td><span class="status req">Povinné</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="oblasti"><span class="num">2</span> Vyfarbiteľné oblasti a dôležitosť výplne</h2>
+
+<p>Každá oblasť, ktorú má dieťa kliknutím vyfarbiť, musí byť <strong>samostatný element</strong> (<code>&lt;path&gt;</code>, <code>&lt;circle&gt;</code>, <code>&lt;ellipse&gt;</code>, <code>&lt;polygon&gt;</code> alebo <code>&lt;rect&gt;</code>) s týmito atribútmi:</p>
+
+<table>
+  <thead><tr><th>Atribút</th><th>Hodnota</th><th>Prečo / Technický význam</th></tr></thead>
+  <tbody>
+    <tr><td><code>data-region</code></td><td>Unikátny slug, napr. <code>"hrib-klobuk"</code></td><td>Identifikátor oblasti pre kód, Vue reaktivitu a ukladanie stavu.</td></tr>
+    <tr><td><code>fill</code></td><td><code>"#ffffff"</code> — biela</td><td><strong>Nikdy nepoužívať <code>"none"</code> ani transparentnosť.</strong> Prehliadače často neregistrujú kliknutia na elementy bez explicitnej výplne. Vedierko a štetec potrebujú plnú počiatočnú výplň.</td></tr>
+    <tr><td>tvar krivky</td><td>Uzavretá (path končí <code>Z</code> / <code>z</code>)</td><td>Inak farba „pretečie" do susednej oblasti.</td></tr>
+    <tr><td><code>stroke</code></td><td>Žiadny, alebo zhodný s globálnym obrysom</td><td>Hranice oblastí kreslia globálne obrysy (viď bod 3).</td></tr>
+  </tbody>
+</table>
+
+<div class="callout good">
+  <strong>Príklad správnej oblasti:</strong><br>
+  <code>&lt;path data-region="strom-koruna" fill="#ffffff" d="M250 100 C 180 100 130 160 130 230..."/&gt;</code>
+</div>
+
+<div class="callout danger">
+  <strong>Najčastejšia chyba z Canvy:</strong> Celý obrázok je jeden veľký zlúčený <code>&lt;path&gt;</code> (napr. všetky čierne čiary stromu, hríba a slnka spolu). Takto sa nedá nič vyfarbiť. <strong>Riešenie:</strong> Každú farebne odlišnú oblasť kresliť ako vlastný objekt.
+</div>
+
+<h3>Minimálna veľkosť oblasti</h3>
+<p>
+  Najmenšia vyfarbiteľná oblasť by mala mať <strong>aspoň ~ 60×60 px</strong> v cieľovom rozlíšení (čo zodpovedá ~5% výšky plátna pri viewBox 1024). Menšie oblasti dieťa ťažko trafí prstom na tablete či mobile. Drobné detaily preto radšej dať ako <strong>zamknuté</strong> (bod 4).
+</p>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="obrysy"><span class="num">3</span> Obrysy, uzavretosť kriviek a riadenie kliknutí</h2>
+
+<p>Čierne obrysy, ktoré dieťa <em>vidí</em>, sú samostatná vrstva nad vyfarbiteľnými oblasťami. Majú tieto vlastnosti:</p>
+
+<table>
+  <thead><tr><th>Atribút</th><th>Hodnota</th></tr></thead>
+  <tbody>
+    <tr><td><code>stroke</code></td><td><code>"#1a1a1a"</code> (nie <code>#000000</code>, nie <code>#231f20</code> ako Canva exportuje)</td></tr>
+    <tr><td><code>stroke-width</code></td><td><code>"4"</code> (pri viewBox 1024). Pre tenké linky <code>"2.5"</code>, pre hrubé akcenty <code>"6"</code>.</td></tr>
+    <tr><td><code>stroke-linejoin</code></td><td><code>"round"</code></td></tr>
+    <tr><td><code>stroke-linecap</code></td><td><code>"round"</code></td></tr>
+    <tr><td><code>fill</code></td><td><code>"none"</code> ak je to len obrys</td></tr>
+  </tbody>
+</table>
+
+<div class="callout danger">
+  <strong>Kritické programátorské pravidlo (Pointer Events):</strong><br>
+  Keďže obrysy ležia vo vrstve <em>nad</em> vyfarbiteľnými plochami, kliknutie priamo na hrubú čiaru by zablokovalo zaliatie plochy pod ňou. V globálnom CSS aplikácie alebo priamo na elementoch musí byť nastavené <strong><code>pointer-events: none;</code></strong> pre všetky čisto obrysové elementy, čím kliknutie prepadne na príslušný <code>data-region</code>.
+</div>
+
+<p>
+  <strong>Uzavretosť kriviek:</strong> Každá vyfarbiteľná oblasť musí byť <em>plne uzavretá</em>.
+  Kontrola: posledný príkaz v <code>d="..."</code> musí byť <code>Z</code> alebo <code>z</code>.
+  Otvorené krivky spôsobia, že farba pretečie. Inkscape: vybrať path → <kbd>Path → Reverse</kbd>
+  ukáže smerové šípky, hľadaj prerušenia.
+</p>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="zamknute"><span class="num">4</span> Zamknuté detaily</h2>
+
+<p>
+  Detaily, ktoré sa <strong>nemajú</strong> vyfarbovať (zreničky, fúzy, žilky listov,
+  ozdobné vlnovky), označ atribútom <code>data-locked="true"</code>. Aplikácia ich
+  bude ignorovať pri kliku (v CSS im taktiež priradí <code>pointer-events: none;</code>) — vedierko ani štetec ich neprefarbí.
+</p>
+
+<pre><code>&lt;circle data-locked="true" cx="410" cy="440" r="25" fill="#1a1a1a"/&gt;
+&lt;path data-locked="true" d="M 470 510 L 540 530" 
+      fill="none" stroke="#1a1a1a" stroke-width="3"/&gt;</code></pre>
+
+<div class="callout">
+  <strong>Pravidlo:</strong> ak je element menší ako ~60×60 px alebo má za úlohu len
+  vizuálnu dekoráciu (lúče slnka, žilky), daj mu <code>data-locked="true"</code>.
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="zakazane"><span class="num">5</span> Zakázané prvky a pravidlá pre skupiny</h2>
+
+<p>Pred odovzdaním <strong>nesmie</strong> SVG obsahovať tieto elementy ani atribúty:</p>
+
+<div class="grid-2">
+  <div class="card bad">
+    <h4>❌ Vizuálne efekty</h4>
+    <ul>
+      <li><code>&lt;linearGradient&gt;</code>, <code>&lt;radialGradient&gt;</code></li>
+      <li><code>&lt;filter&gt;</code> (rozmazanie, tieň…)</li>
+      <li><code>&lt;mask&gt;</code> (okrem layeringového, ak treba)</li>
+      <li><code>&lt;pattern&gt;</code> (textúry)</li>
+      <li><code>filter:</code>, <code>opacity</code> &lt; 1 na vyfarbiteľných oblastiach</li>
+    </ul>
+  </div>
+  <div class="card bad">
+    <h4>❌ Štruktúrne nečistoty</h4>
+    <ul>
+      <li><code>&lt;style&gt;</code> blok vo vnútri SVG</li>
+      <li><code>style="..."</code> inline atribúty</li>
+      <li><code>class="cls-1"</code> a CSS triedy</li>
+      <li><code>transform="..."</code> na skupinách <code>&lt;g&gt;</code> alebo root <code>&lt;svg&gt;</code> (aplikuj priamo na cesty v editoroch)</li>
+      <li>Nepoužité <code>&lt;defs&gt;</code>, <code>&lt;clipPath&gt;</code> bloky</li>
+      <li>Metadata: <code>&lt;title&gt;</code>, <code>&lt;desc&gt;</code>, komentáre</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Pravidlo pre tagy skupín (<code>&lt;g&gt;</code>):</strong><br>
+  Použitie tagu <code>&lt;g&gt;</code> je povolené **výhradne na logické zoskupovanie kódu** v editore (napr. zoskupenie hlavy postavičky). Tieto skupiny však nesmú niesť žiadne transformačné ani štýlové atribúty, ktoré by komplikovali spracovanie vo Vue.
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="pomenovanie"><span class="num">6</span> Pomenovanie súborov, regiónov a prístupnosť</h2>
+
+<h3>Názvy súborov a prístupnosť (Accessibility)</h3>
+<ul>
+  <li><strong>Formát:</strong> <code>slug.svg</code> v priečinku <code>/public/coloring/</code></li>
+  <li><strong>Slug:</strong> lowercase, bez diakritiky, oddelené pomlčkami</li>
+  <li><strong>Náhľad:</strong> ku každému SVG aj PNG náhľad <code>slug.thumb.png</code> 256×256 px</li>
+  <li><strong>Prístupnosť:</strong> Každý vyfarbiteľný element môže obsahovať atribút <code>aria-label="..."</code> s popisom (napr. <code>aria-label="Klobúk hríba"</code>), čo umožní aplikáciu sprístupniť aj pre zrakovo znevýhodnené deti cez čítačky obrazovky.</li>
+</ul>
+
+<table>
+  <thead><tr><th>Príklad názvu / slug</th><th>OK?</th></tr></thead>
+  <tbody>
+    <tr><td><code>macka.svg</code></td><td><span class="status good">✓ OK</span></td></tr>
+    <tr><td><code>sovicka-hupkalka.svg</code></td><td><span class="status good">✓ OK</span></td></tr>
+    <tr><td><code>oko-l</code> / <code>oko-r</code></td><td><span class="status good">✓ OK (rozlíšenie strán príponou)</span></td></tr>
+    <tr><td><code>Mačka.svg</code></td><td><span class="status req">✗ (diakritika, veľké písmená)</span></td></tr>
+    <tr><td><code>obrazok 1.svg</code></td><td><span class="status req">✗ (medzera, nezmyselný názov)</span></td></tr>
+  </tbody>
+</table>
+
+<h3>Slugs pre data-region</h3>
+<ul>
+  <li>Rovnaké pravidlá: lowercase, bez diakritiky, pomlčky</li>
+  <li>Pri zložených obrázkoch <strong>používaj prefix</strong>: <code>"hrib-klobuk"</code>, <code>"hrib-noha"</code>, <code>"strom-koruna"</code>, <code>"strom-kmen"</code></li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="vrstvenie"><span class="num">7</span> Poradie vrstvenia (z-index)</h2>
+
+<p>SVG sa vykresľuje v poradí <strong>zhora nadol v zdrojovom kóde</strong>. Najnižšie postavený element sa vykreslí prvý (najnižšie), posledný element je úplne navrchu. Správne poradie pre omaľovánku:</p>
+
+<ol>
+  <li><strong>Pozadie</strong> — veľké pozadia (obloha, zem, voda) ako <code>data-region</code></li>
+  <li><strong>Stredné objekty</strong> — postava, stromy, domčeky, mraky s <code>data-region</code> a <code>fill="#ffffff"</code></li>
+  <li><strong>Popredie</strong> — kvety, lístie, malé objekty</li>
+  <li><strong>Obrysy</strong> — čierne čiary (samostatné <code>&lt;path&gt;</code> s <code>stroke</code>, bez <code>data-region</code> a s <code>pointer-events: none</code>)</li>
+  <li><strong>Zamknuté detaily</strong> — zreničky, fúzy, ozdobné prvky s <code>data-locked="true"</code></li>
+</ol>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="priklad"><span class="num">8</span> Príklad výsledného SVG</h2>
+
+<p>Ukážka kompletného formátu „Sovička na konári" (v1.1):</p>
+
+<pre><code>&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"&gt;
+
+  &lt;!-- 1. Pozadie a oblasti s aria-label --&gt;
+  &lt;rect data-region="obloha" aria-label="Obloha" x="0" y="0" width="1024" height="780" fill="#ffffff"/&gt;
+  &lt;path data-region="telo" aria-label="Telo sovičky" d="M 512 180 C 310 180 200 360 200 580 Z" fill="#ffffff"/&gt;
+  &lt;path data-region="brucho" aria-label="Bruško sovičky" d="M 512 410 C 380 410 330 510 330 640 Z" fill="#ffffff"/&gt;
+
+  &lt;!-- 2. Oči (vonkajšie biele kruhy) --&gt;
+  &lt;circle data-region="oko-l" aria-label="Ľavé oko" cx="410" cy="435" r="80" fill="#ffffff"/&gt;
+  &lt;circle data-region="oko-r" aria-label="Pravé oko" cx="614" cy="435" r="80" fill="#ffffff"/&gt;
+
+  &lt;!-- 3. Čierne obrysy (globálna vrstva, žiadny data-region) --&gt;
+  &lt;path d="M 512 180 C 310 180 200 360 200 580 Z"
+        fill="none" stroke="#1a1a1a" stroke-width="4"
+        stroke-linejoin="round" stroke-linecap="round"/&gt;
+
+  &lt;!-- 4. Zamknuté detaily (zreničky) --&gt;
+  &lt;circle data-locked="true" cx="410" cy="440" r="25" fill="#1a1a1a"/&gt;
+  &lt;circle data-locked="true" cx="614" cy="440" r="25" fill="#1a1a1a"/&gt;
+&lt;/svg></code></pre>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="canva"><span class="num">9</span> Špeciálne tipy pre Canvu</h2>
+
+<div class="grid-2">
+  <div class="card good">
+    <h4>✅ Robte takto</h4>
+    <ul>
+      <li>Každý objekt (hríb, strom…) kreslite ako <strong>samostatný uzavretý tvar</strong> s bielou výplňou a čiernym obrysom.</li>
+      <li>Používajte <strong>plné farby</strong> — žiadne gradienty.</li>
+      <li>Štvorcový pomer plátna <strong>1024 × 1024 px</strong>.</li>
+      <li>Export: <strong>Stiahnuť → SVG</strong> (vyžaduje Canva Pro).</li>
+    </ul>
+  </div>
+  <div class="card bad">
+    <h4>❌ Nerobte toto</h4>
+    <ul>
+      <li>Nepoužívajte „Outline" textový efekt ani tiene a žiare.</li>
+      <li><strong>Zabráňte permanentnému zlučovaniu:</strong> Nespájajte čierne čiary všetkých objektov do jedného veľkého obrysu, inak oblasti nepôjde oddeliť.</li>
+      <li>Nepoužívajte clip-mask cez celý dizajn.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="postup"><span class="num">10</span> Postup čistenia v Inkscape + SVGO</h2>
+
+<h3>A) Manuálne v Inkscape</h3>
+<ol>
+  <li>Otvor SVG v <strong>Inkscape</strong>.</li>
+  <li>Odstráň prebytočné filtre a efekty.</li>
+  <li>Pre každý objekt: <kbd>Path → Object to Path</kbd>, potom prípadne <kbd>Path → Break apart</kbd> (Ctrl+Shift+K).</li>
+  <li>Ak je obrázok jeden zlúčený obrys: použi nástroj <strong>Bucket Fill</strong> (<kbd>Shift+F7</kbd>) — klikni do každej uzavretej oblasti, čím vznikne nový samostatný path.</li>
+  <li>Otvor <strong>XML editor</strong> (<kbd>Ctrl+Shift+X</kbd>) a pridaj atribúty <code>data-region="..."</code> a prípadne <code>aria-label="..."</code>.</li>
+  <li>Detaily označ <code>data-locked="true"</code>.</li>
+  <li>Ulož ako <strong>Plain SVG</strong>.</li>
+</ol>
+
+<h3>B) SVGO skript (Optimalizovaný pre číselnú presnosť)</h3>
+<p>Konfigurák <code>svgo.config.js</code> upravený tak, aby čistil nánosy z Canvy, zaokrúhľoval desatinné miesta pre úsporu veľkosti, ale **striktne zachovával naše dátové atribúty**:</p>
+<pre><code>module.exports = {
+  multipass: true,
+  plugins: [
+    {
+      name: 'preset-default',
+      params: {
+        overrides: {
+          mergePaths: false,        // NEZlievaj cesty vyfarbiteľných oblastí
+          collapseGroups: false,    // NEzbavuj sa logických skupín &lt;g&gt;
+          removeViewBox: false,     // Zachovaj viewBox
+          cleanupIds: false,
+          cleanupNumericValues: { floatPrecision: 2 }, // Zaokrúhľovanie desatinných miest
+          convertPathData: { floatPrecision: 2 },      // Optimalizácia dlhých koordinátov
+          removeUnknownsAndDefaults: {
+            keepDataAttrs: true,    // Zachovaj data-region, data-locked
+          },
+        },
+      },
+    },
+    'removeDimensions', 'removeTitle', 'removeDesc', 'removeMetadata', 'removeComments'
+  ],
+};</code></pre>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<h2 id="checklist"><span class="num">11</span> Checklist pred odovzdaním</h2>
+
+<div class="checklist">
+  <h3>Štruktúra a čistota kódu</h3>
+  <ul>
+    <li><code>viewBox="0 0 1024 1024"</code> na root, chýba napevno nastavená šírka/výška.</li>
+    <li>Úplná absencia <code>&lt;style&gt;</code> blokov, inline <code>style="..."</code> a CSS tried (<code>class="..."</code>).</li>
+    <li>Žiadne <code>transform="..."</code> atribúty ponechané na skupinách <code>&lt;g&gt;</code>.</li>
+  </ul>
+
+  <h3>Vyfarbiteľné oblasti</h3>
+  <ul>
+    <li>Každá vyfarbiteľná plocha má unikátny <code>data-region="slug"</code>.</li>
+    <li>Všetky vyfarbiteľné plochy majú explicitnú počiatočnú výplň <code>fill="#ffffff"</code> (nikdy nie <code>none</code>).</li>
+    <li>Všetky vyfarbiteľné krivky sú uzavreté (path končí na <code>Z</code> / <code>z</code>).</li>
+    <li>Najmenšia oblasť spĺňa rozmer ≥ 60×60 px kvôli presnosti dotyku, inak je zamknutá.</li>
+  </ul>
+
+  <h3>Obrysy a detaily</h3>
+  <ul>
+    <li>Obrysy a drobnosti majú v CSS nastavené <code>pointer-events: none;</code> pre správny prepad kliknutia.</li>
+    <li>Dekoratívne drobnosti a zreničky majú atribút <code>data-locked="true"</code> a nemajú priradený región.</li>
+  </ul>
+</div>
+
+</main>
+
+</body>
+</html>
