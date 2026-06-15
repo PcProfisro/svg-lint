@@ -558,6 +558,49 @@
     color: var(--fg-3);
     font-size: 12px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  /* ============== Počítadlo vyfarbených oblastí ============== */
+  .region-counter {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .rc-bar {
+    width: 84px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--panel-3);
+    overflow: hidden;
+    border: 1px solid var(--border-2);
+  }
+  .rc-fill {
+    height: 100%;
+    background: var(--success);
+    border-radius: 3px;
+    transition: width 0.2s ease;
+  }
+  .rc-text {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--fg-2);
+    white-space: nowrap;
+  }
+  .rc-text strong {
+    color: var(--success);
+    font-weight: 700;
+  }
+  .rc-sep {
+    color: var(--fg-3);
+    margin: 0 4px;
+  }
+  @media (max-width: 520px) {
+    .region-counter .rc-bar { display: none; }
   }
   .kbd {
     display: inline-block;

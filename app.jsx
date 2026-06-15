@@ -223,10 +223,25 @@ function Palette({ active, onPick }) {
 // ============================================================
 // SvgPreview — vykreslí SVG a zachytáva kliky na data-region
 // ============================================================
-function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget }) {
+// ---- spočítaj vyfarbené / všetky uzavreté oblasti ----
+function isWhiteFill(f) {
+  const v = (f || '').trim().toLowerCase();
+  return v === '' || v === '#ffffff' || v === '#fff' || v === 'white' || v === 'none';
+}
+function countRegions(svg) {
+  if (!svg) return { total: 0, colored: 0 };
+  const regions = svg.querySelectorAll('[data-region]');
+  let colored = 0;
+  regions.forEach(r => { if (!isWhiteFill(r.getAttribute('fill'))) colored++; });
+  return { total: regions.length, colored };
+}
+
+function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget, onPaint }) {
   const containerRef = useRef();
   const colorRef = useRef(activeColor);
+  const paintRef = useRef(onPaint);
   useEffect(() => { colorRef.current = activeColor; }, [activeColor]);
+  useEffect(() => { paintRef.current = onPaint; }, [onPaint]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -264,6 +279,7 @@ function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget }) {
       while (t && t !== imported) {
         if (t.hasAttribute && t.hasAttribute('data-region')) {
           t.setAttribute('fill', colorRef.current);
+          if (paintRef.current) paintRef.current(imported);
           return;
         }
         t = t.parentNode;
@@ -307,6 +323,11 @@ function App() {
   const [mountedSvg, setMountedSvg] = useState(null);
   const [hideInfo, setHideInfo] = useState(false);
   const [preprocessInfo, setPreprocessInfo] = useState(null);
+  const [regionStats, setRegionStats] = useState({ total: 0, colored: 0 });
+
+  const recountRegions = useCallback((svg) => {
+    setRegionStats(countRegions(svg));
+  }, []);
 
   const loadText = async (text, name, size) => {
     // 1) preprocessing — fill:#ff0000 → data-region, atď.
@@ -375,6 +396,7 @@ function App() {
         // zoradenie: error → warning → info, v rámci stability zachované
         found.sort((a, b) => SEV[a.severity].order - SEV[b.severity].order);
         setIssues(found);
+        recountRegions(svg);
       });
     } else {
       setIssues([]);
@@ -671,12 +693,26 @@ function App() {
                 activeColor={activeColor}
                 onSvgReady={handleSvgReady}
                 highlightTarget={highlightTarget}
+                onPaint={recountRegions}
               />
             </div>
             <div className="preview-footer">
               <span className="hint-text">
                 <span className="kbd">tip</span> kliknutie na chybu vľavo zvýrazní jej element vyššie
               </span>
+              <div className="region-counter" title="Vyfarbené oblasti / všetky uzavreté (vyfarbiteľné) oblasti">
+                <div className="rc-bar">
+                  <div
+                    className="rc-fill"
+                    style={{ width: regionStats.total ? `${(regionStats.colored / regionStats.total) * 100}%` : '0%' }}
+                  />
+                </div>
+                <span className="rc-text">
+                  <strong>{regionStats.colored}</strong>
+                  <span className="rc-sep">/</span>
+                  {regionStats.total} vyfarbených
+                </span>
+              </div>
             </div>
           </section>
         </main>
