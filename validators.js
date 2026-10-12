@@ -201,11 +201,14 @@
       const onlyPointerEvents = declarations.length > 0 &&
         declarations.every(d => /^pointer-events\s*:/i.test(d));
       if (declarations.length === 0 || onlyPointerEvents) continue;
+      const MOVABLE = /^(fill|fill-rule|stroke|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit|stroke-dasharray|stroke-dashoffset|clip-rule|vector-effect)$/i;
+      const lost = declarations.map(d => d.split(':')[0].trim()).filter(p => !MOVABLE.test(p) && !/^pointer-events$/i.test(p));
       issues.push({
         ruleId: 'attr.style',
         severity: 'error',
         title: `Inline style na <${el.tagName.toLowerCase()}>`,
-        detail: 'Inline style="..." nie je povolený. Presypte vlastnosti do prezentačných atribútov (fill, stroke).',
+        detail: 'Inline style="..." nie je povolený. Auto-fix presunie fill/stroke vlastnosti do prezentačných atribútov' + (el.hasAttribute('data-region') ? ' (región dostane fill="#ffffff").' : '.'),
+        hint: lost.length ? `Tieto vlastnosti sa nedajú presunúť a auto-fix ich zahodí: ${lost.join(', ')}` : undefined,
         element: el,
         snippet: `style="${styleVal.slice(0, 60)}"`,
         fixable: true,

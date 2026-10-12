@@ -4,6 +4,11 @@
 (function () {
   'use strict';
 
+  const MOVABLE_PROPS = new Set([
+    'fill', 'fill-rule', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+    'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'clip-rule', 'vector-effect',
+  ]);
+
   // Každý fix dostane (svgRoot, issueElement, issue) a vykoná mutáciu.
   const FIXES = {
     addViewBox(svg) {
@@ -25,8 +30,23 @@
     removeMetadata(svg, el) {
       if (el && el.parentNode) el.parentNode.removeChild(el);
     },
+    // Presunie bezpečné vlastnosti zo style do prezentačných atribútov, potom style odstráni.
+    // Regióny dostanú vždy fill="#ffffff". Nepresunuteľné vlastnosti zahodí (validátor ich hlási).
     stripInlineStyle(svg, el) {
-      if (el) el.removeAttribute('style');
+      if (!el) return;
+      const style = el.getAttribute('style') || '';
+      const isRegion = el.hasAttribute('data-region');
+      for (const decl of style.split(';')) {
+        const i = decl.indexOf(':');
+        if (i < 0) continue;
+        const prop = decl.slice(0, i).trim().toLowerCase();
+        const val = decl.slice(i + 1).replace(/!important/i, '').trim();
+        if (!val || !MOVABLE_PROPS.has(prop)) continue;
+        if (isRegion && prop === 'fill') continue;
+        el.setAttribute(prop, val); // style mal prednosť pred atribútom → prepíš
+      }
+      el.removeAttribute('style');
+      if (isRegion) el.setAttribute('fill', '#ffffff');
     },
     stripClassAttr(svg, el) {
       if (el) el.removeAttribute('class');
