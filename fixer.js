@@ -43,6 +43,17 @@
         el.removeAttribute('fill-opacity');
       }
     },
+    removeHiddenRegion(svg, el) {
+      if (!el || !el.parentNode) return;
+      let parent = el.parentNode;
+      parent.removeChild(el);
+      // odstráň prázdne obaly <g>
+      while (parent && parent !== svg && parent.tagName && parent.tagName.toLowerCase() === 'g' && !parent.hasAttribute('data-locked') && !Array.from(parent.childNodes).some(n => n.nodeType === 1)) {
+        const up = parent.parentNode;
+        up.removeChild(parent);
+        parent = up;
+      }
+    },
     closePathZ(svg, el) {
       if (el) {
         const d = (el.getAttribute('d') || '').trim();
@@ -84,7 +95,8 @@
       return cur;
     }
 
-    let applied = 0;
+    // najprv nájdi všetky ciele v klone (odstraňovanie by inak posunulo indexy)
+    const jobs = [];
     for (const issue of issues) {
       if (!issue.fixable || !issue.fixId) continue;
       const fix = FIXES[issue.fixId];
@@ -96,6 +108,10 @@
       } else {
         target = clone;
       }
+      jobs.push({ issue, fix, target });
+    }
+    let applied = 0;
+    for (const { issue, fix, target } of jobs) {
       try {
         fix(clone, target, issue);
         applied++;

@@ -474,6 +474,10 @@
     issues.push(...rule_dataLockedNoRegion(mountedSvg));
     issues.push(...rule_regionSize(mountedSvg));
     issues.push(...rule_fileSize(sourceText));
+    if (window.SvgRegionOverlap) {
+      try { issues.push(...window.SvgRegionOverlap.check(mountedSvg)); }
+      catch (e) { console.warn('Kontrola duplicitných regiónov zlyhala:', e); }
+    }
 
     return issues;
   }
