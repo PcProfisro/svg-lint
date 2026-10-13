@@ -107,21 +107,23 @@
       return { x: x0, y: y0, w, h, data, sum };
     }
 
+    // Mapa vlastníctva pixelov v skutočnom poradí vykresľovania (poradie dokumentu):
+    // neskorší element prepíše skorší. Obrysy pred regiónmi sú teda pod nimi.
     const owner = new Int32Array(W * H).fill(-1);
-    const masks = regions.map((el, i) => {
-      const m = rasterize(el, 'fill');
-      if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.data[y * m.w + x]) owner[(y + m.y) * W + x + m.x] = i;
-      return m;
-    });
+    const regionIndex = new Map(regions.map((el, i) => [el, i]));
     const lockedShapes = new Set();
     svg.querySelectorAll('[data-locked="true"]').forEach(l => {
       if (l.matches(SHAPES)) lockedShapes.add(l);
       l.querySelectorAll(SHAPES).forEach(c => lockedShapes.add(c));
     });
-    lockedShapes.forEach(l => {
-      if (l.hasAttribute('data-region')) return;
-      const m = rasterize(l, 'locked');
-      if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.data[y * m.w + x]) owner[(y + m.y) * W + x + m.x] = -1;
+    const masks = new Array(regions.length).fill(null);
+    svg.querySelectorAll(SHAPES + ',[data-region]').forEach(el => {
+      const ri = regionIndex.has(el) ? regionIndex.get(el) : -1;
+      if (ri < 0 && !lockedShapes.has(el)) return;
+      if (ri >= 0 && masks[ri]) return;
+      const m = rasterize(el, ri >= 0 ? 'fill' : 'locked');
+      if (ri >= 0) masks[ri] = m;
+      if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.data[y * m.w + x]) owner[(y + m.y) * W + x + m.x] = ri;
     });
 
     // disk offsets pre eróziu
@@ -164,6 +166,16 @@
           detail: 'Región nie je vidieť — skontrolujte ručne.', element: el, snippet, fixable: false });
       }
     });
+    // Poistka: oprava nesmie odstrániť všetky regióny (alebo väčšinu) — to je takmer
+    // isto chybná detekcia; ponecháme len hlásenie na ručnú kontrolu.
+    const removable = issues.filter(i => i.fixId === 'removeHiddenRegion');
+    if (removable.length && removable.length >= Math.max(1, Math.ceil(regions.length / 2))) {
+      removable.forEach(i => {
+        i.fixable = false;
+        i.severity = 'warning';
+        i.hint = `Auto-fix vypnutý: odstránil by ${removable.length} z ${regions.length} regiónov — pravdepodobne chybná detekcia, skontrolujte ručne.`;
+      });
+    }
     return issues;
   }
 
