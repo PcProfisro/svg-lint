@@ -84,8 +84,9 @@
       const rule = (attrUp(el, 'fill-rule', svg) || 'nonzero') === 'evenodd' ? 'evenodd' : 'nonzero';
       if (mode === 'fill') ctx.fill(p, rule);
       else {
+        // 'locked' = výplň aj ťah; 'stroke' = len ťah
         const f = (attrUp(el, 'fill', svg) || '').toLowerCase();
-        if (f && f !== 'none' && f !== 'transparent') ctx.fill(p, rule);
+        if (mode !== 'stroke' && f && f !== 'none' && f !== 'transparent') ctx.fill(p, rule);
         const st = (attrUp(el, 'stroke', svg) || '').toLowerCase();
         if (st && st !== 'none') {
           ctx.lineWidth = parseFloat(attrUp(el, 'stroke-width', svg) || '1') || 1;
@@ -109,7 +110,38 @@
 
     // Mapa vlastníctva pixelov v skutočnom poradí vykresľovania (poradie dokumentu):
     // neskorší element prepíše skorší. Obrysy pred regiónmi sú teda pod nimi.
+    // Región s vlastným obrysom (stroke) si ním zakrýva okraj vlastnej výplne:
+    // tie pixely dostanú hodnotu -(i + 2) („ťah regiónu i“).
+    // layers = výplne a ťahy všetkých prvkov v poradí vykresľovania, každá so svojou
+    // „farbou“ (vyfarbiteľný región má vlastnú) — z nich sa skladá výrez obrázka
+    // s prvkom a bez neho, aby sa dalo overiť, že jeho odstránenie nič nezmení.
     const owner = new Int32Array(W * H).fill(-1);
+    const layers = [];
+    const colorIds = new Map();
+    // null = nekreslí sa; 0 = biela, to isté ako prázdne pozadie (obrázok je na bielej);
+    // 1 = všetky veľmi tmavé odtiene (#000, #1a1a1a… sú na obrázku rovnaké)
+    const luma = (v) => {
+      if (v === 'black') return 0;
+      let m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(v);
+      let r, g, b;
+      if (m) {
+        let h = m[1];
+        if (h.length === 3) h = h.split('').map(c => c + c).join('');
+        r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+      } else if ((m = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(v))) {
+        [r, g, b] = [+m[1], +m[2], +m[3]];
+      } else return null;
+      return 0.299 * r + 0.587 * g + 0.114 * b;
+    };
+    const colorCls = (v) => {
+      v = (v || '').trim().toLowerCase();
+      if (v === 'none' || v === 'transparent') return null;
+      if (isWhite(v)) return 0;
+      const l = luma(v);
+      if (l !== null && l < 64) return 1;
+      if (!colorIds.has(v)) colorIds.set(v, 2 + colorIds.size);
+      return colorIds.get(v);
+    };
     const regionIndex = new Map(regions.map((el, i) => [el, i]));
     const lockedShapes = new Set();
     svg.querySelectorAll('[data-locked="true"]').forEach(l => {
@@ -117,14 +149,92 @@
       l.querySelectorAll(SHAPES).forEach(c => lockedShapes.add(c));
     });
     const masks = new Array(regions.length).fill(null);
+    const strokeMasks = new Array(regions.length).fill(null);
+    // bitmapu ani text táto kontrola nevykresľuje — pri nich sa o prvku s data-region
+    // aj data-locked nedá povedať, že je zakrytý (pod ním môže byť kresba z bitmapy)
+    const unknownContent = Array.from(svg.querySelectorAll('image, text, foreignObject, use'))
+      .some(el => !el.closest('defs, clipPath, mask, pattern, symbol'));
+    const paint = (m, v) => {
+      if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.data[y * m.w + x]) owner[(y + m.y) * W + x + m.x] = v;
+    };
+    const hasStroke = (el) => {
+      const st = (attrUp(el, 'stroke', svg) || '').toLowerCase();
+      const sw = parseFloat(attrUp(el, 'stroke-width', svg) || '1');
+      return st && st !== 'none' && st !== 'transparent' && sw > 0;
+    };
+    const isLockedToo = (el) => el.getAttribute('data-locked') === 'true' || !!el.closest('[data-locked="true"]');
     svg.querySelectorAll(SHAPES + ',[data-region]').forEach(el => {
       const ri = regionIndex.has(el) ? regionIndex.get(el) : -1;
-      if (ri < 0 && !lockedShapes.has(el)) return;
       if (ri >= 0 && masks[ri]) return;
-      const m = rasterize(el, ri >= 0 ? 'fill' : 'locked');
-      if (ri >= 0) masks[ri] = m;
-      if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.data[y * m.w + x]) owner[(y + m.y) * W + x + m.x] = ri;
+      const layer = { el, fill: null, fillCls: 0, stroke: null, strokeCls: 0 };
+      if (ri < 0 && !lockedShapes.has(el)) {
+        // iný tvar (nie región, nie zamknutý) — do mapy vlastníctva nepatrí, ale je vidieť,
+        // takže sa ráta pri skladaní výrezu (napr. čierne polygóny pod čiarami)
+        if (el.closest('defs, clipPath, mask, pattern, symbol, marker')) return;
+        const fc = colorCls(attrUp(el, 'fill', svg) || '#000');
+        if (fc !== null) { layer.fill = rasterize(el, 'fill'); layer.fillCls = fc; }
+        if (hasStroke(el)) { layer.stroke = rasterize(el, 'stroke'); layer.strokeCls = colorCls(attrUp(el, 'stroke', svg)); }
+        layers.push(layer);
+        return;
+      }
+      if (ri >= 0) {
+        const m = rasterize(el, 'fill');
+        masks[ri] = m;
+        paint(m, ri);
+        layer.fill = m;
+        layer.fillCls = isLockedToo(el) ? colorCls(fillOf(el) || '#000') : 1000 + ri;
+        if (hasStroke(el)) {
+          const sm = rasterize(el, 'stroke');
+          strokeMasks[ri] = sm;
+          paint(sm, -(ri + 2));
+          layer.stroke = sm;
+          layer.strokeCls = colorCls(attrUp(el, 'stroke', svg));
+        }
+      } else {
+        const fc = colorCls(attrUp(el, 'fill', svg) || '#000');   // bez fill kreslí SVG čiernou
+        if (fc !== null) { layer.fill = rasterize(el, 'fill'); layer.fillCls = fc; paint(layer.fill, -1); }
+        if (hasStroke(el)) { layer.stroke = rasterize(el, 'stroke'); layer.strokeCls = colorCls(attrUp(el, 'stroke', svg)); paint(layer.stroke, -1); }
+      }
+      layers.push(layer);
     });
+
+    // výrez obrázka (obdĺžnik bb) zložený z vrstiev okrem tých v `bez`
+    const compose = (bb, bez) => {
+      const w = bb.x1 - bb.x0, h = bb.y1 - bb.y0, out = new Int32Array(w * h);
+      for (const L of layers) {
+        if (bez.has(L.el)) continue;
+        for (const [m, c] of [[L.fill, L.fillCls], [L.stroke, L.strokeCls]]) {
+          if (!m || c === null || !m.sum) continue;
+          const ax = Math.max(m.x, bb.x0), bx = Math.min(m.x + m.w, bb.x1);
+          const ay = Math.max(m.y, bb.y0), by = Math.min(m.y + m.h, bb.y1);
+          for (let y = ay; y < by; y++) for (let x = ax; x < bx; x++)
+            if (m.data[(y - m.y) * m.w + x - m.x]) out[(y - bb.y0) * w + x - bb.x0] = c;
+        }
+      }
+      return out;
+    };
+    const layerOf = new Map(layers.map(L => [L.el, L]));
+    // koľko pixelov sa zmení, keď sa prvok odstráni (okrem pixelov, kde je vidieť
+    // jeho vlastnú výplň, ak ignoreOwnFill — tie má odstránenie kópie práve zmeniť)
+    const removalDiff = (el, removed, ignoreOwnFill) => {
+      const L = layerOf.get(el);
+      if (!L) return 0;
+      let bb = null;
+      for (const m of [L.fill, L.stroke]) {
+        if (!m || !m.sum) continue;
+        bb = bb ? { x0: Math.min(bb.x0, m.x), y0: Math.min(bb.y0, m.y), x1: Math.max(bb.x1, m.x + m.w), y1: Math.max(bb.y1, m.y + m.h) }
+                : { x0: m.x, y0: m.y, x1: m.x + m.w, y1: m.y + m.h };
+      }
+      if (!bb) return 0;
+      bb = { x0: Math.max(0, bb.x0 - 2), y0: Math.max(0, bb.y0 - 2), x1: Math.min(W, bb.x1 + 2), y1: Math.min(H, bb.y1 + 2) };
+      const a = compose(bb, removed);
+      const without = new Set(removed); without.add(el);
+      const b = compose(bb, without);
+      let n = 0;
+      for (let k = 0; k < a.length; k++) if (a[k] !== b[k] && !(ignoreOwnFill && a[k] === L.fillCls)) n++;
+      return n;
+    };
+    const removedSoFar = new Set();
 
     // disk offsets pre eróziu
     const disk = [];
@@ -153,8 +263,29 @@
         if (ok) core = true;
       }
       const ratio = visible / m.sum;
+      // Kópia musí ležať pod iným (neskorším) regiónom — biely región zakrytý len čiarami
+      // nie je kópia.
+      let underRegion = false;
+      for (let y = m.y; y < m.y + m.h && !underRegion; y++) for (let x = m.x; x < m.x + m.w; x++) {
+        if (!m.data[(y - m.y) * m.w + x - m.x]) continue;
+        const o = owner[y * W + x];
+        if (o >= 0 && o !== i) { underRegion = true; break; }
+      }
+      // Odstránenie nesmie zmeniť obrázok viac ako o pár pixelov (zaokrúhlenie okrajov):
+      // - prvok s data-region aj data-locked (pôvodný tvar kresby pod výplňou z Inkscapu)
+      //   nesmie zmeniť nič — rovnako ako krok 3 v oprav_svg.py;
+      // - obyčajná kópia smie zmeniť len pixely, kde vykúka jej výplň (tú bielu čiaru
+      //   má oprava odstrániť), nie čiary — napr. ak tvorí kus obrysu jej vlastný stroke.
+      const lockedToo = isLockedToo(el);
+      const LIM = 3 * s * s;
+      let hidden = false;
+      if (isWhite(fillOf(el)) && underRegion && !(lockedToo && unknownContent)
+          && (lockedToo || (!core && ratio < CFG.maxVisibleRatio))) {
+        hidden = removalDiff(el, removedSoFar, !lockedToo) <= LIM;
+      }
+      if (hidden) removedSoFar.add(el);
       if (isWhite(fillOf(el))) {
-        if (!core && ratio < CFG.maxVisibleRatio) issues.push({
+        if (hidden) issues.push({
           ruleId: 'region.hiddenCopy', severity: 'error',
           title: `Skrytá kópia regiónu „${id}"`,
           detail: `Biely región je prekrytý neskoršími regiónmi, viditeľných je len ${(ratio * 100).toFixed(1)} % (tenký okraj). Po vyfarbení zostane biela čiara a obrázok sa nedá dokončiť.`,
