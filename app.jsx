@@ -100,7 +100,7 @@ function highlightElement(svg, target) {
 // ============================================================
 // EmptyState — drag & drop / file picker / sample loader
 // ============================================================
-function EmptyState({ onLoadText, onLoadSample }) {
+function EmptyState({ onLoadText, onLoadImage, onLoadSample, busy }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef();
 
@@ -115,8 +115,13 @@ function EmptyState({ onLoadText, onLoadSample }) {
     if (f) readFile(f);
   };
   function readFile(f) {
+    // bitmapový lineart (PNG/JPG/WebP) ide rovno do kroku „lineart → plochy“
+    if (/\.(png|jpe?g|webp)$/i.test(f.name) || /^image\/(png|jpeg|webp)$/.test(f.type)) {
+      onLoadImage(f);
+      return;
+    }
     if (!/\.svg$/i.test(f.name) && f.type !== 'image/svg+xml') {
-      alert('Vyber prosím .svg súbor.');
+      alert('Vyber prosím .svg súbor alebo obrázok (PNG, JPG).');
       return;
     }
     const reader = new FileReader();
@@ -136,7 +141,7 @@ function EmptyState({ onLoadText, onLoadSample }) {
       <input
         ref={inputRef}
         type="file"
-        accept=".svg,image/svg+xml"
+        accept=".svg,image/svg+xml,.png,.jpg,.jpeg,.webp"
         style={{ display: 'none' }}
         onChange={onPick}
       />
@@ -148,8 +153,8 @@ function EmptyState({ onLoadText, onLoadSample }) {
             <path d="M32 26 L32 44" stroke="#58a6ff" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
         </div>
-        <div className="dropzone-title">Pretiahni sem .svg súbor</div>
-        <div className="dropzone-sub">alebo klikni a vyber zo zariadenia</div>
+        <div className="dropzone-title">{busy ? 'Hľadám plochy v kresbe…' : 'Pretiahni sem .svg súbor alebo lineart (PNG, JPG)'}</div>
+        <div className="dropzone-sub">alebo klikni a vyber zo zariadenia · kresbu bez plôch rozdelí na plochy automaticky</div>
         <button
           className="btn-secondary"
           onClick={(e) => { e.stopPropagation(); onLoadSample(); }}
@@ -324,12 +329,40 @@ function App() {
   const [hideInfo, setHideInfo] = useState(false);
   const [preprocessInfo, setPreprocessInfo] = useState(null);
   const [regionStats, setRegionStats] = useState({ total: 0, colored: 0 });
+  const [lineartInfo, setLineartInfo] = useState(null);
+  const [lineartRunning, setLineartRunning] = useState(false);
 
   const recountRegions = useCallback((svg) => {
     setRegionStats(countRegions(svg));
   }, []);
 
-  const loadText = async (text, name, size) => {
+  // lineart → plochy (lineart-regions.js); vráti výsledok alebo null pri chybe
+  const runLineart = async (input) => {
+    if (!window.LineartRegions) return null;
+    setLineartRunning(true);
+    try {
+      return await window.LineartRegions.convert(input);
+    } catch (e) {
+      alert('Plochy sa nepodarilo vytvoriť: ' + e.message);
+      return null;
+    } finally {
+      setLineartRunning(false);
+    }
+  };
+
+  const loadImage = async (file) => {
+    const lineart = await runLineart(file);
+    if (lineart) loadText(lineart.text, file.name.replace(/\.\w+$/, '.svg'), lineart.stats.bytes, lineart);
+  };
+
+  const loadText = async (text, name, size, lineart) => {
+    // 0) kresba bez plôch (žiadny data-region ani červená výplň) → lineart → plochy
+    if (!lineart && window.LineartRegions && !window.LineartRegions.hasRegions(text)) {
+      lineart = await runLineart(text);
+      if (lineart) text = lineart.text;
+    }
+    setLineartInfo(lineart ? { ...lineart.stats, regions: lineart.regions, intermediate: lineart.text } : null);
+
     // 1) preprocessing — fill:#ff0000 → data-region, atď.
     let processedText = text;
     let info = null;
@@ -498,7 +531,35 @@ function App() {
     if (text) downloadBlob(text, '.clean.svg');
   };
 
+  const downloadNumberedMap = async () => {
+    if (!lineartInfo) return;
+    const canvas = await window.LineartRegions.numberedPreview(lineartInfo.intermediate, lineartInfo.regions, 1024);
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (fileName || 'svg').replace(/\.svg$/i, '') + '.mapa-ploch.png';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  };
+
+  // mená plôch { "r-01": "auto-kabina", … } → data-region
+  const loadNames = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f || !svgText) return;
+    let names;
+    try { names = JSON.parse(await f.text()); } catch (err) { alert('Súbor s menami nie je platný JSON: ' + err.message); return; }
+    const ren = window.LineartRegions.renameRegions(svgText, names);
+    const named = Object.values(ren.names).filter(n => !/^r-\d+$/.test(n)).length;
+    setLineartInfo(info => ({ ...info, naming: { named, problems: ren.problems } }));
+    setSvgText(ren.text);
+    setFileSize(new Blob([ren.text]).size);
+  };
+
   const reset = () => {
+    setLineartInfo(null);
     setSvgText(null);
     setFileName(null);
     setFileSize(0);
@@ -569,7 +630,7 @@ function App() {
 
       {!svgText ? (
         <main className="empty-main">
-          <EmptyState onLoadText={loadText} onLoadSample={loadSample} />
+          <EmptyState onLoadText={loadText} onLoadImage={loadImage} onLoadSample={loadSample} busy={lineartRunning} />
           <div className="empty-help">
             <div className="empty-help-title">Čo aplikácia robí</div>
             <ul>
@@ -604,6 +665,32 @@ function App() {
                 </label>
               </div>
             </div>
+
+            {lineartInfo && (
+              <div className="preprocess-banner lineart-banner">
+                <span className="preprocess-icon">◩</span>
+                <span>
+                  Plochy vytvorené automaticky z lineartu: <strong>{lineartInfo.regions.length}</strong> plôch
+                  {lineartInfo.blocked > 0 && (<>, <strong>{lineartInfo.blocked}</strong> drobných plôšok ostalo bielych</>)}
+                  {' '}<span style={{ opacity: 0.5 }}>·</span>{' '}
+                  {((lineartInfo.ms.raster + lineartInfo.ms.plochy + lineartInfo.ms.krivky) / 1000).toFixed(1)} s
+                  <br />
+                  <a href="#" onClick={(e) => { e.preventDefault(); downloadBlob(lineartInfo.intermediate, '.plochy.svg'); }}>stiahnuť medzistupeň s červenými plochami</a> (na úpravu v Inkscape)
+                  {' '}<span style={{ opacity: 0.5 }}>·</span>{' '}
+                  <a href="#" onClick={(e) => { e.preventDefault(); downloadNumberedMap(); }}>mapa plôch s číslami</a> (na pomenovanie)
+                  {' '}<span style={{ opacity: 0.5 }}>·</span>{' '}
+                  <label className="lineart-names">
+                    <a href="#" onClick={(e) => { e.preventDefault(); e.currentTarget.nextSibling.click(); }}>načítať mená (.json)</a>
+                    <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={loadNames} />
+                  </label>
+                  {lineartInfo.naming && (
+                    <><br />Pomenovaných <strong>{lineartInfo.naming.named}</strong> z {lineartInfo.regions.length} plôch
+                      {lineartInfo.naming.problems.length > 0 && (<> · {lineartInfo.naming.problems.map(p => `${p.id}: ${p.msg}`).join('; ')}</>)}</>
+                  )}
+                </span>
+                <button className="banner-close" onClick={() => setLineartInfo(null)} aria-label="zavrieť">×</button>
+              </div>
+            )}
 
             {preprocessInfo && (
               <div className="preprocess-banner">
