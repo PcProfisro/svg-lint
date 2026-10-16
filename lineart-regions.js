@@ -855,7 +855,8 @@
   function renameRegions(svgText, names) {
     const problems = [];
     const ids = [];
-    svgText.replace(/(?:\bid|data-region)="(r-\d+)"/g, (m, id) => { ids.push(id); return m; });
+    // aj oblasti odstránené krížikom v svg-lint (data-removed-region), aby po vrátení mali meno
+    svgText.replace(/(?:\bid|data-region|data-removed-region)="(r-\d+)"/g, (m, id) => { ids.push(id); return m; });
     const used = new Map();
     const final = {};
     for (const id of ids) {
@@ -878,7 +879,7 @@
       final[id] = slug;
     }
     Object.keys(names).forEach(id => { if (!final[id]) problems.push({ id, msg: 'v obrázku taká plocha nie je' }); });
-    const text = svgText.replace(/(\bid|data-region)="(r-\d+)"/g, (m, attr, id) => `${attr}="${final[id] || id}"`);
+    const text = svgText.replace(/(\bid|data-region|data-removed-region)="(r-\d+)"/g, (m, attr, id) => `${attr}="${final[id] || id}"`);
     return { text, names: final, problems };
   }
 

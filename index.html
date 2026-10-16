@@ -513,6 +513,17 @@
     border: 2px solid var(--border) !important;
   }
   .swatch-white.on { border-color: var(--fg) !important; }
+  .swatch-erase {
+    background: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* odstránená oblasť: v náhľade sivá, aby bolo vidno, čo sa nebude vyfarbovať */
+  .svg-preview-canvas svg [data-removed-region] {
+    fill: #d0d7de;
+    cursor: pointer;
+  }
 
   /* ============== Preview frame ============== */
   .preview-frame {

@@ -17,6 +17,9 @@ const PALETTE = [
   '#1a1a1a', // čierna
 ];
 
+// ---- krížik v palete: oblasť sa prestane vyfarbovať (a ďalší klik ju vráti) ----
+const ERASE = 'odstranit-oblast';
+
 // ---- severity meta ----
 const SEV = {
   error:   { label: 'CHYBA',     icon: '✗', cls: 'sev-error',   order: 0 },
@@ -221,6 +224,16 @@ function Palette({ active, onPick }) {
         aria-label="biela (reset)"
         title="Biela — vymazať farbu"
       />
+      <button
+        className={`swatch swatch-white swatch-erase ${active === ERASE ? 'on' : ''}`}
+        onClick={() => onPick(ERASE)}
+        aria-label="odstrániť oblasť"
+        title="Odstrániť oblasť — nebude sa vyfarbovať vedierkom (klik na sivú oblasť ju vráti)"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M6 6 L18 18 M18 6 L6 18" stroke="#d1242f" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -241,12 +254,14 @@ function countRegions(svg) {
   return { total: regions.length, colored };
 }
 
-function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget, onPaint }) {
+function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget, onPaint, onToggleRegion }) {
   const containerRef = useRef();
   const colorRef = useRef(activeColor);
   const paintRef = useRef(onPaint);
+  const toggleRef = useRef(onToggleRegion);
   useEffect(() => { colorRef.current = activeColor; }, [activeColor]);
   useEffect(() => { paintRef.current = onPaint; }, [onPaint]);
+  useEffect(() => { toggleRef.current = onToggleRegion; }, [onToggleRegion]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -278,11 +293,19 @@ function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget, onPaint
     // pointer-events
     makePointerEventsNone(imported);
 
-    // klik handler — vyfarbi data-region
+    // klik handler — vyfarbi data-region; s krížikom oblasť odstráni alebo vráti
     const handler = (e) => {
       let t = e.target;
       while (t && t !== imported) {
+        if (t.hasAttribute && t.hasAttribute('data-removed-region')) {
+          if (colorRef.current === ERASE && toggleRef.current) toggleRef.current(t.getAttribute('data-removed-region'), false);
+          return;
+        }
         if (t.hasAttribute && t.hasAttribute('data-region')) {
+          if (colorRef.current === ERASE) {
+            if (toggleRef.current) toggleRef.current(t.getAttribute('data-region'), true);
+            return;
+          }
           t.setAttribute('fill', colorRef.current);
           if (paintRef.current) paintRef.current(imported);
           return;
@@ -420,6 +443,40 @@ function App() {
     }
   };
 
+  // testovacie farby, ktoré sa po odstránení / vrátení oblasti vrátia do nového náhľadu
+  const restoreColorsRef = useRef(null);
+
+  // Krížik z palety: oblasť prestane byť data-region (ostane biely tvar, vedierko ju ignoruje)
+  // alebo sa ňou znova stane. Značka data-removed-region drží pôvodné meno, kým sa súbor
+  // nestiahne — serializeSvg ju odstráni.
+  const toggleRegion = useCallback((id, remove) => {
+    if (!svgText) return;
+    const colors = {};
+    if (mountedSvg) {
+      mountedSvg.querySelectorAll('[data-region]').forEach(el => {
+        const f = el.getAttribute('fill');
+        if (!isWhiteFill(f)) colors[el.getAttribute('data-region')] = f;
+      });
+    }
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    const el = doc.querySelector(remove ? `[data-region="${CSS.escape(id)}"]` : `[data-removed-region="${CSS.escape(id)}"]`);
+    if (!el) return;
+    if (remove) {
+      el.removeAttribute('data-region');
+      el.setAttribute('data-removed-region', id);
+      delete colors[id];
+    } else {
+      el.removeAttribute('data-removed-region');
+      el.setAttribute('data-region', id);
+    }
+    el.setAttribute('fill', '#ffffff');
+    restoreColorsRef.current = colors;
+    const text = new XMLSerializer().serializeToString(doc.documentElement);
+    setSvgText(text);
+    setFileSize(new Blob([text]).size);
+    setSelectedIdx(null);
+  }, [svgText, mountedSvg]);
+
   const handleSvgReady = useCallback((svg) => {
     setMountedSvg(svg);
     if (svg && svgText) {
@@ -429,6 +486,15 @@ function App() {
         // zoradenie: error → warning → info, v rámci stability zachované
         found.sort((a, b) => SEV[a.severity].order - SEV[b.severity].order);
         setIssues(found);
+        // farby z testu až po kontrole (inak by hlásila nebiele oblasti)
+        const colors = restoreColorsRef.current;
+        restoreColorsRef.current = null;
+        if (colors) {
+          svg.querySelectorAll('[data-region]').forEach(el => {
+            const c = colors[el.getAttribute('data-region')];
+            if (c) el.setAttribute('fill', c);
+          });
+        }
         recountRegions(svg);
       });
     } else {
@@ -469,6 +535,7 @@ function App() {
     clone.querySelectorAll('.__highlight-rect').forEach(el => el.remove());
     // Odstráň interné runtime atribúty
     clone.querySelectorAll('[data-pe]').forEach(el => el.removeAttribute('data-pe'));
+    clone.querySelectorAll('[data-removed-region]').forEach(el => el.removeAttribute('data-removed-region'));
     clone.removeAttribute('style');
     if (resetRegions) {
       clone.querySelectorAll('[data-region]').forEach(el => {
@@ -771,7 +838,11 @@ function App() {
           <section className="preview-pane">
             <div className="preview-header">
               <div className="preview-label">Náhľad &amp; test vyfarbenia</div>
-              <div className="preview-hint">Vyber farbu → klikni do oblasti v obrázku</div>
+              <div className="preview-hint">
+                {activeColor === ERASE
+                  ? 'Klik na oblasť ju odstráni (nebude sa vyfarbovať) · klik na sivú ju vráti'
+                  : 'Vyber farbu → klikni do oblasti v obrázku'}
+              </div>
             </div>
             <Palette active={activeColor} onPick={setActiveColor} />
             <div className="preview-frame">
@@ -781,6 +852,7 @@ function App() {
                 onSvgReady={handleSvgReady}
                 highlightTarget={highlightTarget}
                 onPaint={recountRegions}
+                onToggleRegion={toggleRegion}
               />
             </div>
             <div className="preview-footer">
