@@ -44,7 +44,11 @@
 
   function check(svg) {
     const issues = [];
-    const regions = Array.from(svg.querySelectorAll('[data-region]'));
+    // Zamknutý prvok s data-region (sám alebo cez rodiča) sa nedá vyfarbiť — nie je plocha.
+    // Hlási ho region.lockedConflict, ktorého oprava odstráni len data-region; tu sa ráta
+    // ako zamknutý tvar, takže sa ako skrytá kópia nemaže.
+    const isLockedToo = (el) => !!el.closest('[data-locked="true"]');
+    const regions = Array.from(svg.querySelectorAll('[data-region]')).filter(el => !isLockedToo(el));
     if (!regions.length) return issues;
 
     // duplicitné hodnoty data-region
@@ -150,10 +154,6 @@
     });
     const masks = new Array(regions.length).fill(null);
     const strokeMasks = new Array(regions.length).fill(null);
-    // bitmapu ani text táto kontrola nevykresľuje — pri nich sa o prvku s data-region
-    // aj data-locked nedá povedať, že je zakrytý (pod ním môže byť kresba z bitmapy)
-    const unknownContent = Array.from(svg.querySelectorAll('image, text, foreignObject, use'))
-      .some(el => !el.closest('defs, clipPath, mask, pattern, symbol'));
     const paint = (m, v) => {
       if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (m.data[y * m.w + x]) owner[(y + m.y) * W + x + m.x] = v;
     };
@@ -162,7 +162,6 @@
       const sw = parseFloat(attrUp(el, 'stroke-width', svg) || '1');
       return st && st !== 'none' && st !== 'transparent' && sw > 0;
     };
-    const isLockedToo = (el) => el.getAttribute('data-locked') === 'true' || !!el.closest('[data-locked="true"]');
     svg.querySelectorAll(SHAPES + ',[data-region]').forEach(el => {
       const ri = regionIndex.has(el) ? regionIndex.get(el) : -1;
       if (ri >= 0 && masks[ri]) return;
@@ -182,7 +181,7 @@
         masks[ri] = m;
         paint(m, ri);
         layer.fill = m;
-        layer.fillCls = isLockedToo(el) ? colorCls(fillOf(el) || '#000') : 1000 + ri;
+        layer.fillCls = 1000 + ri;
         if (hasStroke(el)) {
           const sm = rasterize(el, 'stroke');
           strokeMasks[ri] = sm;
@@ -272,16 +271,12 @@
         if (o >= 0 && o !== i) { underRegion = true; break; }
       }
       // Odstránenie nesmie zmeniť obrázok viac ako o pár pixelov (zaokrúhlenie okrajov):
-      // - prvok s data-region aj data-locked (pôvodný tvar kresby pod výplňou z Inkscapu)
-      //   nesmie zmeniť nič — rovnako ako krok 3 v oprav_svg.py;
-      // - obyčajná kópia smie zmeniť len pixely, kde vykúka jej výplň (tú bielu čiaru
-      //   má oprava odstrániť), nie čiary — napr. ak tvorí kus obrysu jej vlastný stroke.
-      const lockedToo = isLockedToo(el);
+      // kópia smie zmeniť len pixely, kde vykúka jej výplň (tú bielu čiaru má oprava
+      // odstrániť), nie čiary — napr. ak tvorí kus obrysu jej vlastný stroke.
       const LIM = 3 * s * s;
       let hidden = false;
-      if (isWhite(fillOf(el)) && underRegion && !(lockedToo && unknownContent)
-          && (lockedToo || (!core && ratio < CFG.maxVisibleRatio))) {
-        hidden = removalDiff(el, removedSoFar, !lockedToo) <= LIM;
+      if (isWhite(fillOf(el)) && underRegion && !core && ratio < CFG.maxVisibleRatio) {
+        hidden = removalDiff(el, removedSoFar, true) <= LIM;
       }
       if (hidden) removedSoFar.add(el);
       if (isWhite(fillOf(el))) {

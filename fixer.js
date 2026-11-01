@@ -74,6 +74,20 @@
         parent = up;
       }
     },
+    // Zamknutý prvok sa nedá vyfarbiť, preto nemá byť zarátaný medzi plochy. Odstráni sa len
+    // data-region; data-locked, data-pe, d, fill, stroke… ostanú. Vráti ID do hlásenia.
+    dropLockedRegion(svg, el) {
+      if (!el || !el.hasAttribute('data-region')) return;
+      const id = el.getAttribute('data-region');
+      el.removeAttribute('data-region');
+      return id;
+    },
+    // Opačný prípad (len na voľbu používateľa): prvok bol zamknutý omylom, má byť plochou.
+    unlockRegion(svg, el) {
+      if (!el) return;
+      el.removeAttribute('data-locked');
+      el.removeAttribute('data-pe');
+    },
     closePathZ(svg, el) {
       if (el) {
         const d = (el.getAttribute('d') || '').trim();
@@ -131,9 +145,11 @@
       jobs.push({ issue, fix, target });
     }
     let applied = 0;
+    const dropped = [];   // ID plôch, ktorým oprava odstránila data-region (zamknuté prvky)
     for (const { issue, fix, target } of jobs) {
       try {
-        fix(clone, target, issue);
+        const id = fix(clone, target, issue);
+        if (issue.fixId === 'dropLockedRegion' && id) dropped.push(id);
         applied++;
       } catch (e) {
         console.warn('Fix zlyhal:', issue.fixId, e);
@@ -146,7 +162,7 @@
     // pretty-print: pridaj newliny medzi top-level elementy
     out = '<?xml version="1.0" encoding="UTF-8"?>\n' + out;
 
-    return { text: out, applied };
+    return { text: out, applied, dropped };
   }
 
   window.SvgFixer = { applyFixes };

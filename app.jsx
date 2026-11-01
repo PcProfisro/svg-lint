@@ -173,7 +173,7 @@ function EmptyState({ onLoadText, onLoadImage, onLoadSample, busy }) {
 // ============================================================
 // IssueRow — jeden riadok v zozname problémov
 // ============================================================
-function IssueRow({ issue, active, expanded, onClick }) {
+function IssueRow({ issue, active, expanded, onClick, onChoice }) {
   const meta = SEV[issue.severity];
   return (
     <div
@@ -196,6 +196,14 @@ function IssueRow({ issue, active, expanded, onClick }) {
           )}
           {issue.hint && <div className="hint">→ {issue.hint}</div>}
           {issue.fixable && <div className="fix-badge">auto-fix dostupný</div>}
+          {issue.choices && (
+            <div className="issue-choices">
+              {issue.choices.map(c => (
+                <button key={c.fixId} className="btn-secondary"
+                  onClick={(e) => { e.stopPropagation(); onChoice(issue, c.fixId); }}>{c.label}</button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -445,6 +453,8 @@ function App() {
 
   // testovacie farby, ktoré sa po odstránení / vrátení oblasti vrátia do nového náhľadu
   const restoreColorsRef = useRef(null);
+  // výsledok poslednej opravy, kým sa opravené SVG neprevaliduje
+  const fixReportRef = useRef(null);
 
   // Krížik z palety: oblasť prestane byť data-region (ostane biely tvar, vedierko ju ignoruje)
   // alebo sa ňou znova stane. Značka data-removed-region drží pôvodné meno, kým sa súbor
@@ -482,10 +492,28 @@ function App() {
     if (svg && svgText) {
       // počkaj na commit DOM (setTimeout funguje aj v skrytých taboch, rAF býva throttlovaný)
       setTimeout(() => {
+        // medzitým ho nahradil novší náhľad (napr. po SVGO) — ten sa prevaliduje sám;
+        // odpojené SVG nemá rozloženie, test klikateľnosti by na ňom nič nezistil
+        if (!svg.isConnected) return;
         const found = window.SvgValidator.validateSvg(svg, svgText);
         // zoradenie: error → warning → info, v rámci stability zachované
         found.sort((a, b) => SEV[a.severity].order - SEV[b.severity].order);
         setIssues(found);
+        // kontrola po oprave: žiadny konflikt, každá plocha sa dá kliknúť, počítadlo dôjde na koniec
+        const report = fixReportRef.current;
+        fixReportRef.current = null;
+        if (report) {
+          const conflicts = found.filter(i => i.ruleId === 'region.lockedConflict').length;
+          const { unreachable, tested, total } = window.SvgValidator.reachability(svg);
+          const ok = (b) => b ? '✓' : '✗';
+          const lines = [`Aplikovaných opráv: ${report.applied}`];
+          if (report.dropped.length) lines.push(`Zamknutým prvkom odstránený data-region (${report.dropped.length}): ${report.dropped.join(', ')}`);
+          lines.push('', 'Kontrola po oprave:');
+          lines.push(`${ok(conflicts === 0)} zamknuté prvky s data-region: ${conflicts}`);
+          lines.push(`${ok(!unreachable.length)} plochy, ktoré sa nedajú kliknúť: ${unreachable.length}${unreachable.length ? ' (' + unreachable.map(el => el.getAttribute('data-region')).join(', ') + ')' : ''}`);
+          lines.push(`${ok(!unreachable.length && tested === total)} počítadlo dôjde na koniec: ${total - unreachable.length} / ${total}${tested < total ? ` (overených len ${tested}, zvyšok nie je na obrazovke)` : ''}`);
+          setTimeout(() => alert(lines.join('\n')), 50);
+        }
         // farby z testu až po kontrole (inak by hlásila nebiele oblasti)
         const colors = restoreColorsRef.current;
         restoreColorsRef.current = null;
@@ -522,11 +550,21 @@ function App() {
       alert('Nie sú žiadne automaticky opraviteľné problémy.');
       return;
     }
-    const { text, applied } = window.SvgFixer.applyFixes(mountedSvg, issues);
+    const { text, applied, dropped } = window.SvgFixer.applyFixes(mountedSvg, issues);
+    // hlásenie ukáže handleSvgReady, až keď je opravené SVG v náhľade a prevalidované
+    fixReportRef.current = { applied, dropped };
     setSvgText(text);
     setSelectedIdx(null);
-    // mini-feedback
-    setTimeout(() => alert(`Aplikovaných opráv: ${applied}\nSVG bol prevalidovaný.`), 50);
+  };
+
+  // voľba používateľa pri jednom probléme (napr. zamknutý prvok navrchu: odstrániť data-region,
+  // alebo z neho urobiť plochu) — „Pokúsiť sa opraviť" také prvky sám nemení
+  const applyChoice = (issue, fixId) => {
+    if (!mountedSvg) return;
+    const { text, applied, dropped } = window.SvgFixer.applyFixes(mountedSvg, [{ ...issue, fixable: true, fixId }]);
+    fixReportRef.current = { applied, dropped };
+    setSvgText(text);
+    setSelectedIdx(null);
   };
 
   const serializeSvg = (resetRegions) => {
@@ -810,6 +848,7 @@ function App() {
                   active={selectedIdx === i}
                   expanded={selectedIdx === i}
                   onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+                  onChoice={applyChoice}
                 />
               ))}
             </div>

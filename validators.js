@@ -393,7 +393,7 @@
           ruleId: 'region.tooSmall',
           severity: 'info',
           title: `Malá oblasť (${Math.round(bb.width)}×${Math.round(bb.height)})`,
-          detail: 'Pod 60×60 v jednotkách viewBoxu — dieťa to ťažko trafí prstom. Zvážte data-locked="true".',
+          detail: 'Pod 60×60 v jednotkách viewBoxu — dieťa to ťažko trafí prstom. Zvážte zamknutie (data-locked="true" a bez data-region).',
           element: el,
           snippet: snippetOf(el),
           fixable: false,
@@ -419,20 +419,149 @@
     return issues;
   }
 
-  function rule_dataLockedNoRegion(doc) {
-    // info: ak má element aj data-region aj data-locked, je to konflikt
+  // ---- test klikateľnosti (beží v rovnakom stave ako náhľad: data-pe="none" = pointer-events: none) ----
+  // Body mriežky (n+1)×(n+1) v obdĺžniku prvku na obrazovke, od stredu von (zásah príde skôr).
+  function gridPoints(el, n) {
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return [];
+    const pts = [];
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const x = r.left + r.width * i / n, y = r.top + r.height * j / n;
+      if (x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight) pts.push([x, y, (i - n / 2) ** 2 + (j - n / 2) ** 2]);
+    }
+    return pts.sort((a, b) => a[2] - b[2]);
+  }
+  // true = aspoň jeden bod zasiahne prvok; null = prvok nie je na obrazovke, test sa nedá urobiť
+  function hitsSomewhere(el, isHit, n = 16) {
+    const pts = gridPoints(el, n);
+    if (!pts.length) return null;
+    for (const [x, y] of pts) if (isHit(document.elementFromPoint(x, y))) return true;
+    return false;
+  }
+  // plocha, ktorú vyfarbí klik na tento prvok — rovnako ako klik v náhľade (najbližší data-region)
+  const regionOf = (h) => h && h.closest ? h.closest('[data-region]') : null;
+  const lockedAncestor = (el) => el.closest('[data-locked="true"]');
+
+  // Plochy, ktoré sa v náhľade nedajú kliknúť (niečo ich celé prekrýva alebo sú zamknuté).
+  // Vracia { unreachable: [el], tested, total } — tested = koľko plôch bolo na obrazovke.
+  function reachability(svg) {
+    const all = Array.from(svg.querySelectorAll('[data-region]'));
+    const unreachable = [];
+    let tested = 0;
+    for (const el of all) {
+      const hit = hitsSomewhere(el, h => regionOf(h) === el);
+      if (hit === null) continue;
+      tested++;
+      if (!hit) unreachable.push(el);
+    }
+    return { unreachable, tested, total: all.length };
+  }
+
+  // Prvok s data-region, ktorý je zamknutý (sám alebo cez rodiča). Zamknutý prvok sa nedá
+  // vyfarbiť, takže počítadlo nikdy nedôjde na koniec. Predvolená oprava odstráni data-region
+  // (zamknutie platí). Ak je jeho výplň aspoň z polovice vidieť, mohol byť zamknutý omylom —
+  // taký program sám nemení, len ponúkne obe možnosti.
+  function rule_dataLockedNoRegion(svg) {
     const issues = [];
-    for (const el of doc.querySelectorAll('[data-region][data-locked]')) {
-      issues.push({
+    const conflicts = Array.from(svg.querySelectorAll('[data-region]')).filter(lockedAncestor);
+    if (!conflicts.length) return issues;
+    // Koľko z výplne prvku je vidieť: body mriežky vo vnútri jeho výplne, v ktorých je navrchu
+    // práve jeho výplň. Na chvíľu sa zapnú pointer-events všetkým (rozhoduje, čo je vidieť),
+    // a prvku samotnému len pre výplň — jeho obrys (často čiara kresby) sa nepočíta.
+    // Tenký okraj alebo kus obrysu má aj skrytá kópia; omylom zamknutá plocha je vidieť celá.
+    const pe = Array.from(svg.querySelectorAll('[data-pe]')).map(el => [el, el.getAttribute('data-pe')]);
+    pe.forEach(([el]) => el.removeAttribute('data-pe'));
+    const shown = new Map();
+    try {
+      for (const el of conflicts) {
+        if (typeof el.isPointInFill !== 'function' || !el.getScreenCTM()) continue;
+        const inv = el.getScreenCTM().inverse();
+        // prezentačný atribút, nie el.style — Chrome by po zmene CSSOM neskôr dopísal style=""
+        const old = el.getAttribute('pointer-events');
+        el.setAttribute('pointer-events', 'fill');
+        let inside = 0, top = 0;
+        for (const [x, y] of gridPoints(el, 16)) {
+          const p = new DOMPoint(x, y).matrixTransform(inv);
+          if (!el.isPointInFill(p)) continue;
+          inside++;
+          if (document.elementFromPoint(x, y) === el) top++;
+        }
+        if (old === null) el.removeAttribute('pointer-events'); else el.setAttribute('pointer-events', old);
+        if (inside) shown.set(el, top / inside);
+      }
+    } finally {
+      pe.forEach(([el, v]) => el.setAttribute('data-pe', v));
+    }
+    for (const el of conflicts) {
+      const id = el.getAttribute('data-region');
+      const self = el.getAttribute('data-locked') === 'true';
+      const where = self ? 'má data-locked="true"' : 'leží v zamknutej skupine';
+      const cs = getComputedStyle(el);
+      const ratio = shown.get(el) || 0;
+      const suspicious = ratio >= 0.5 && (cs.fill || '').trim() !== 'none' && parseFloat(cs.opacity) > 0;
+      const issue = {
         ruleId: 'region.lockedConflict',
-        severity: 'warning',
-        title: 'Element má súčasne data-region aj data-locked',
-        detail: 'Tieto atribúty sú navzájom výlučné. Vyberte si jeden.',
+        severity: 'error',
+        title: `Zamknutý prvok má data-region „${id}"`,
+        element: el,
+        snippet: snippetOf(el),
+      };
+      if (suspicious && self) {
+        Object.assign(issue, {
+          detail: `Prvok ${where}, ale jeho výplň je vidieť (${Math.round(ratio * 100)} %) — možno bol zamknutý omylom. Zamknutý sa nedá vyfarbiť a počítadlo nedôjde na koniec.`,
+          hint: 'Rozhodnite sami: odstrániť data-region (ostane zamknutý), alebo z neho urobiť plochu (odstráni sa data-locked a data-pe). „Pokúsiť sa opraviť" ho nemení.',
+          fixable: false,
+          choices: [
+            { fixId: 'dropLockedRegion', label: 'Odstrániť data-region' },
+            { fixId: 'unlockRegion', label: 'Urobiť z neho plochu' },
+          ],
+        });
+      } else {
+        Object.assign(issue, {
+          detail: suspicious
+            ? `Prvok ${where} a jeho výplň je vidieť (${Math.round(ratio * 100)} %). Zamknutá je celá skupina, preto sa dá len odstrániť data-region.`
+            : `Prvok ${where} a z jeho výplne je vidieť ${Math.round(ratio * 100)} % (skrytá alebo prekrytá kópia). Zamknutý sa nedá vyfarbiť, takže počítadlo nedôjde na koniec.`,
+          hint: 'Auto-fix odstráni data-region; data-locked, data-pe aj tvar a farby ostanú.',
+          fixable: true,
+          fixId: 'dropLockedRegion',
+        });
+      }
+      issues.push(issue);
+    }
+    return issues;
+  }
+
+  // Každá plocha sa musí dať kliknúť aspoň v jednom bode mriežky 17×17 v jej obdĺžniku.
+  // Zamknuté plochy hlási rule_dataLockedNoRegion, tu sa neopakujú.
+  function rule_regionReachable(svg) {
+    const issues = [];
+    const { unreachable, tested, total } = reachability(svg);
+    for (const el of unreachable) {
+      if (lockedAncestor(el)) continue;
+      issues.push({
+        ruleId: 'region.unreachable',
+        severity: 'error',
+        title: `Plocha „${el.getAttribute('data-region')}" sa nedá kliknúť`,
+        detail: 'V žiadnom bode mriežky 17×17 v jej obdĺžniku nie je navrchu — niečo ju celú prekrýva a dieťa ju nevyfarbí.',
         element: el,
         snippet: snippetOf(el),
         fixable: false,
       });
     }
+    if (unreachable.length) issues.push({
+      ruleId: 'region.counterIncomplete',
+      severity: 'error',
+      title: `Počítadlo nedôjde na koniec: vyfarbiť sa dá ${total - unreachable.length} z ${total} plôch`,
+      detail: 'Počítadlo ráta všetky prvky s data-region, ale niektoré sa nedajú kliknúť.',
+      fixable: false,
+    });
+    if (tested < total) issues.push({
+      ruleId: 'region.reachUntested',
+      severity: 'info',
+      title: `Klikateľnosť overená len pri ${tested} z ${total} plôch`,
+      detail: 'Zvyšok nebol na obrazovke. Zväčšite okno, aby bol náhľad celý vidieť, a súbor načítajte znova.',
+      fixable: false,
+    });
     return issues;
   }
 
@@ -475,6 +604,7 @@
     issues.push(...rule_regionOpacity(mountedSvg));
     issues.push(...rule_regionPathClosed(mountedSvg));
     issues.push(...rule_dataLockedNoRegion(mountedSvg));
+    issues.push(...rule_regionReachable(mountedSvg));
     issues.push(...rule_regionSize(mountedSvg));
     issues.push(...rule_fileSize(sourceText));
     if (window.SvgRegionOverlap) {
@@ -485,5 +615,5 @@
     return issues;
   }
 
-  window.SvgValidator = { validateSvg };
+  window.SvgValidator = { validateSvg, reachability };
 })();
