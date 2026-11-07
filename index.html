@@ -550,9 +550,9 @@
     overflow: hidden;
   }
   .svg-preview-canvas {
-    width: min(100cqw, 100cqh);
-    height: min(100cqw, 100cqh);
-    aspect-ratio: 1 / 1;
+    /* --ar = šírka / výška viewBoxu (nastavuje app.jsx), plátno sa zmestí do rámu */
+    width: min(100cqw, calc(100cqh * var(--ar, 1)));
+    height: min(100cqh, calc(100cqw / var(--ar, 1)));
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);

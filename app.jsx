@@ -298,6 +298,10 @@ function SvgPreview({ svgText, activeColor, onSvgReady, highlightTarget, onPaint
     imported.style.maxWidth = '100%';
     imported.style.maxHeight = '100%';
 
+    // plátno náhľadu v pomere strán viewBoxu (nie štvorec)
+    const vbox = imported.viewBox && imported.viewBox.baseVal;
+    container.style.setProperty('--ar', vbox && vbox.width > 0 && vbox.height > 0 ? vbox.width / vbox.height : 1);
+
     // pointer-events
     makePointerEventsNone(imported);
 
