@@ -3,8 +3,9 @@
 // Z čiernobielej kresby (SVG alebo PNG/JPG) spočíta vyfarbiteľné plochy tak,
 // ako ich dnes ručne robí vedierko v Inkscape, ale naraz pre celú kresbu:
 //
-//   1) kresbu vykreslí do rastra (predvolene 2048 px), vycentruje a zväčší ju
-//      na plátno 1024 × 1024 s okrajom
+//   1) kresbu vykreslí do rastra (2 px na jednotku, keď kratšia strana = 1024);
+//      rozmer sa NEMENÍ: SVG si nechá svoj viewBox, PNG/JPG dostane viewBox
+//      v pomere strán obrázka s kratšou stranou 1024
 //   2) čiara = pixel tmavší ako prah; medzery v čiarach užšie ako ~2·gap px
 //      sa pri hľadaní plôch považujú za zatvorené
 //   3) súvislé biele oblasti = plochy; tie, čo sa dotýkajú okraja, sú pozadie;
@@ -25,8 +26,8 @@
   'use strict';
 
   const DEFAULTS = {
-    size: 2048,        // rozlíšenie rastra v px pre plátno 1024 jednotiek
-    margin: 40,        // okraj okolo kresby v jednotkách viewBox
+    size: 2048,        // rozlíšenie rastra v px na 1024 jednotiek kratšej strany
+    maxSize: 4096,     // strop dlhšej strany rastra v px (veľmi pretiahnuté obrázky)
     threshold: 128,    // jas (0–255), pod ktorým je pixel čiara
     gap: 2,            // polomer uzatvárania medzier v čiarach (px rastra)
     grow: 10,          // ako ďaleko plocha zalezie pod čiaru (px rastra)
@@ -82,21 +83,17 @@
     return [0, 0, VB, VB];
   }
 
-  // Vykreslí SVG text tak, aby štvorec box (v súradniciach zdroja) vyplnil S × S px.
-  async function renderSvgBox(text, box, S) {
+  // Vykreslí SVG s jeho vlastným viewBoxom do obdĺžnika w × h px (obsah mimo viewBox sa nekreslí).
+  async function loadSvgImage(text, w, h) {
     const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
     const svg = doc.documentElement;
     if (!svg || svg.nodeName.toLowerCase() !== 'svg') throw new Error('Súbor nie je SVG.');
-    svg.setAttribute('viewBox', box.join(' '));
-    svg.setAttribute('width', S);
-    svg.setAttribute('height', S);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.setAttribute('viewBox', parseViewBox(svg).join(' '));
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.setAttribute('preserveAspectRatio', 'none');
     const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
-    const { img, url } = await loadImage(blob);
-    const { ctx } = newCanvas(S, S);
-    ctx.drawImage(img, 0, 0, S, S);
-    URL.revokeObjectURL(url);
-    return toGray(ctx, S, S);
+    return loadImage(blob);
   }
 
   function inkBBox(gray, W, H, T) {
@@ -113,51 +110,45 @@
     return x1 < 0 ? null : { x0, y0, x1: x1 + 1, y1: y1 + 1 };
   }
 
-  // štvorec okolo obdĺžnika tak, aby po zmenšení na VB zostal okraj margin
-  function squareAround(x, y, w, h, margin) {
-    const side = Math.max(w, h) / (1 - 2 * margin / VB);
-    return [x + w / 2 - side / 2, y + h / 2 - side / 2, side, side];
-  }
-
-  // Vráti { gray, S } — kresba vycentrovaná a zväčšená na S × S px.
+  // Vráti { gray, S, box, view, unit } — kresba v štvorcovom rastri S × S px.
+  //   view = výsledný viewBox [x, y, w, h]: pri SVG pôvodný, pri bitmape
+  //          [0, 0, w, h] v pomere strán obrázka s kratšou stranou 1024
+  //   box  = štvorec [x, y, strana, strana] v jednotkách view, ktorý pokrýva raster;
+  //          view v ňom leží vycentrovaný, zvyšok je biely (pozadie)
+  //   unit = koľko jednotiek view zodpovedá 1 jednotke plátna s kratšou stranou 1024
   async function rasterize(input, o) {
-    const S = o.size;
     const isSvg = typeof input === 'string' ||
       (input && (input.type === 'image/svg+xml' || /\.svg$/i.test(input.name || '')));
 
+    let text = null, img, url, view;
     if (isSvg) {
-      const text = typeof input === 'string' ? input : await input.text();
-      const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
-      const vb = parseViewBox(doc.documentElement);
-      // 1. priechod: celý viewBox (doplnený na štvorec), nájdi kresbu
-      const P = 1024;
-      const box1 = squareAround(vb[0], vb[1], vb[2], vb[3], 0);
-      const g1 = await renderSvgBox(text, box1, P);
-      const bb = inkBBox(g1, P, P, o.threshold);
-      if (!bb) throw new Error('Kresba je prázdna (žiadny tmavý pixel).');
-      const k = box1[2] / P;
-      const box2 = squareAround(box1[0] + (bb.x0 - 1) * k, box1[1] + (bb.y0 - 1) * k,
-        (bb.x1 - bb.x0 + 2) * k, (bb.y1 - bb.y0 + 2) * k, o.margin);
-      // 2. priechod: vektorovo ostro priamo vo výslednom rozlíšení
-      return { gray: await renderSvgBox(text, box2, S), S, box: box2 };
+      text = typeof input === 'string' ? input : await input.text();
+      view = parseViewBox(new DOMParser().parseFromString(text, 'image/svg+xml').documentElement);
+    } else {
+      ({ img, url } = await loadImage(input));
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const f = VB / Math.min(w, h);
+      view = [0, 0, round3(w * f), round3(h * f)];
     }
+    const [vx, vy, vw, vh] = view;
+    const side = Math.max(vw, vh);
+    const unit = Math.min(vw, vh) / VB;
+    const S = Math.min(o.maxSize, Math.round(o.size * side / unit / VB));
+    const p = S / side;                               // px rastra na jednotku view
+    const box = [vx - (side - vw) / 2, vy - (side - vh) / 2, side, side];
+    const dx = (vx - box[0]) * p, dy = (vy - box[1]) * p, dw = vw * p, dh = vh * p;
 
-    // bitmapa
-    const { img, url } = await loadImage(input);
-    const w = img.naturalWidth, h = img.naturalHeight;
-    const a = newCanvas(w, h);
-    a.ctx.drawImage(img, 0, 0);
-    const bb = inkBBox(toGray(a.ctx, w, h), w, h, o.threshold);
-    if (!bb) { URL.revokeObjectURL(url); throw new Error('Kresba je prázdna (žiadny tmavý pixel).'); }
-    const box = squareAround(bb.x0, bb.y0, bb.x1 - bb.x0, bb.y1 - bb.y0, o.margin);
-    const b = newCanvas(S, S);
-    const s = S / box[2];
-    b.ctx.imageSmoothingQuality = 'high';
-    b.ctx.setTransform(s, 0, 0, s, -box[0] * s, -box[1] * s);
-    b.ctx.drawImage(img, 0, 0);
+    if (isSvg) ({ img, url } = await loadSvgImage(text, Math.round(dw), Math.round(dh)));
+    const { ctx } = newCanvas(S, S);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, dx, dy, dw, dh);
     URL.revokeObjectURL(url);
-    return { gray: toGray(b.ctx, S, S), S, box };
+    const gray = toGray(ctx, S, S);
+    if (!inkBBox(gray, S, S, o.threshold)) throw new Error('Kresba je prázdna (žiadny tmavý pixel).');
+    return { gray, S, box, view, unit };
   }
+
+  const round3 = v => Math.round(v * 1000) / 1000;
 
   // ───────────────────────── plochy ─────────────────────────
 
@@ -688,9 +679,14 @@
     return out;
   }
 
-  // číslo s jedným desatinným miestom (0,1 jednotky = 0,2 px rastra), bez nadbytočných znakov
+  // presnosť zápisu: 0,1 jednotky plátna s kratšou stranou 1024 (= 0,2 px rastra);
+  // pri SVG s malým viewBoxom (napr. v mm) viac desatinných miest. Nastavuje convert().
+  let ROUND = 10;
+  const R = v => Math.round(v * ROUND) / ROUND;
+
+  // číslo zaokrúhlené na ROUND, bez nadbytočných znakov
   function fmt(v) {
-    let s = (Math.round(v * 10) / 10).toString();
+    let s = R(v).toString();
     if (s === '-0') s = '0';
     return s.replace(/^(-?)0\./, '$1.');
   }
@@ -701,11 +697,11 @@
 
   // slučka → "M … c … z" (relatívne súradnice); hladké miesta ako krivky, zlomy ostré.
   // eps = tolerancia zjednodušenia v jednotkách výstupu.
-  function loopToPath(p, k, cornerDeg, eps) {
+  // org = [x, y] — začiatok rastra v jednotkách výstupu
+  function loopToPath(p, k, cornerDeg, eps, org) {
     const n = p.length;
     // zaokrúhlime vopred, aby sa relatívne súradnice nesčítavali s chybou
-    const R = v => Math.round(v * 10) / 10;
-    const P = p.map(q => [R(q[0] * k), R(q[1] * k)]);
+    const P = p.map(q => [R(org[0] + q[0] * k), R(org[1] + q[1] * k)]);
     const maxCorner = cornerDeg * Math.PI / 180;
     const tan = new Array(n), sharp = new Uint8Array(n), seg = new Float64Array(n);
     for (let i = 0; i < n; i++) {
@@ -746,15 +742,19 @@
   async function convert(input, options) {
     const o = Object.assign({}, DEFAULTS, options || {});
     const t0 = performance.now();
-    const { gray, S, box } = await rasterize(input, o);
+    const { gray, S, box, view, unit } = await rasterize(input, o);
     const t1 = performance.now();
     const { ink, lab, regions, blocked, extInfo } = computeLabels(gray, S, o);
     const t2 = performance.now();
-    const k = VB / S;
+    const k = box[2] / S;                 // jednotky výstupu na px rastra
+    const org = [box[0], box[1]];
+    const X = v => org[0] + v * k, Y = v => org[1] + v * k;
+    ROUND = Math.pow(10, Math.max(1, Math.ceil(1 - Math.log10(unit))));
 
-    // poradie čítania: po riadkoch (pásy po 64 jednotkách), potom zľava
+    // poradie čítania: po riadkoch (pásy po 64 jednotkách plátna 1024), potom zľava
     regions.forEach(r => { r.cx = r.sx / r.area; r.cy = r.sy / r.area; });
-    regions.sort((a, b) => (Math.floor(a.cy * k / 64) - Math.floor(b.cy * k / 64)) || (a.cx - b.cx));
+    const band = 64 * unit / k;
+    regions.sort((a, b) => (Math.floor(a.cy / band) - Math.floor(b.cy / band)) || (a.cx - b.cx));
 
     const mid = (xi, yi, xo, yo) => [(xi + xo + 1) / 2, (yi + yo + 1) / 2];
     const width = String(regions.length).length < 2 ? 2 : String(regions.length).length;
@@ -765,13 +765,14 @@
       const loops = traceMask((x, y) => lab[y * S + x] === L, r.x0, r.y0, r.x1, r.y1, mid)
         .map(l => simplifyLoop(smoothLoop(l), o.simplifyRegion));
       const id = 'r-' + String(idx + 1).padStart(width, '0');
-      const d = loops.map(l => loopToPath(l, k, o.corner, o.simplifyRegion * k)).join('');
+      const d = loops.map(l => loopToPath(l, k, o.corner, o.simplifyRegion * k, org)).join('');
       parts.push(`<path id="${id}" style="fill:#ff0000" fill-rule="evenodd" d="${d}"/>`);
-      report.push({ id, area: Math.round(r.area * k * k),
-        bbox: [r.x0 * k, r.y0 * k, (r.x1 + 1) * k, (r.y1 + 1) * k].map(Math.round),
-        center: [Math.round(r.cx * k), Math.round(r.cy * k)],
-        label: [Math.round((r.px + 0.5) * k), Math.round((r.py + 0.5) * k)],
-        radius: Math.round(r.depth / 3 * k) });   // polomer najväčšieho kruhu vo vnútri plochy
+      // údaje v jednotkách výstupu (viewBox), zaokrúhlené ako súradnice ciest
+      report.push({ id, area: R(r.area * k * k),
+        bbox: [X(r.x0), Y(r.y0), X(r.x1 + 1), Y(r.y1 + 1)].map(R),
+        center: [R(X(r.cx)), R(Y(r.cy))],
+        label: [R(X(r.px + 0.5)), R(Y(r.py + 0.5))],
+        radius: R(r.depth / 3 * k) });   // polomer najväčšieho kruhu vo vnútri plochy
     });
 
     // čiary: bod hranice dopočítaný z medzitónov (subpixelovo)
@@ -785,17 +786,18 @@
     const inkLoops = traceMask((x, y) => ink[y * S + x] === 1, 0, 0, S - 1, S - 1, iso)
       .filter(l => loopArea(l) >= o.minInk)
       .map(l => simplifyLoop(l, o.simplify));
-    const inkD = inkLoops.map(l => loopToPath(l, k, o.corner, o.simplify * k)).join('');
+    const inkD = inkLoops.map(l => loopToPath(l, k, o.corner, o.simplify * k, org)).join('');
     parts.push(`<path fill="#1a1a1a" fill-rule="evenodd" data-locked="true" d="${inkD}"/>`);
     const t3 = performance.now();
 
-    const text = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VB} ${VB}">\n` + parts.join('\n') + '\n</svg>\n';
+    const text = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${view.join(' ')}">\n` + parts.join('\n') + '\n</svg>\n';
     return {
       text,
-      box,          // výrez zdroja (v jeho súradniciach), ktorý sa zmapoval na 0 0 1024 1024
+      view,         // viewBox výstupu = rozmer zdroja (bitmapa: kratšia strana 1024)
+      box,          // štvorec rastra v jednotkách viewBox (view v ňom leží vycentrovaný)
       regions: report,
       // úsečky, ktorými predĺženie koncov čiar oddelilo plochy (v jednotkách viewBox)
-      extensions: extInfo.kept.map(s => [s.a[0] * k, s.a[1] * k, s.b[0] * k, s.b[1] * k].map(v => Math.round(v * 10) / 10)),
+      extensions: extInfo.kept.map(s => [X(s.a[0]), Y(s.a[1]), X(s.b[0]), Y(s.b[1])].map(R)),
       stats: {
         regions: regions.length,
         blocked,
@@ -814,23 +816,29 @@
   // Mapa plôch s číslami — podklad na pomenovanie regiónov.
   // Každá plocha má inú svetlú farbu, číslo (= koniec id „r-NN“) stojí v jej najhlbšom mieste.
   // labelFn(r) môže namiesto čísla vrátiť iný text (napr. meno regiónu na kontrolu).
+  // size = kratšia strana obrázka v px; dlhšia podľa pomeru strán viewBoxu.
   async function numberedPreview(svgText, regions, size, labelFn) {
     size = size || 1024;
     const color = (i) => `hsl(${(i * 137.508) % 360} 70% 80%)`;
     const byId = new Map(regions.map((r, i) => [r.id, i]));
     const colored = svgText.replace(/<path id="([^"]+)" style="fill:#ff0000"/g,
       (m, id) => `<path id="${id}" style="fill:${color(byId.get(id) || 0)}"`);
-    const { img, url } = await loadImage(new Blob([colored], { type: 'image/svg+xml' }));
-    const { c, ctx } = newCanvas(size, size);
-    ctx.drawImage(img, 0, 0, size, size);
+    const vb = parseViewBox(new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement);
+    const unit = Math.min(vb[2], vb[3]) / VB;           // jednotky viewBoxu na jednotku plátna 1024
+    const s = size / Math.min(vb[2], vb[3]);            // px na jednotku viewBoxu
+    const W = Math.round(vb[2] * s), H = Math.round(vb[3] * s);
+    const { img, url } = await loadSvgImage(colored, W, H);
+    const { c, ctx } = newCanvas(W, H);
+    ctx.drawImage(img, 0, 0, W, H);
     URL.revokeObjectURL(url);
-    const s = size / VB;
+    ctx.translate(-vb[0] * s, -vb[1] * s);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     regions.forEach((r) => {
       const t = labelFn ? labelFn(r) : r.id.replace(/^r-0*/, '');
       const p = r.label || r.center;
-      const fs = (labelFn ? Math.max(7, Math.min(13, (r.radius || 10) * 0.8)) : Math.max(9, Math.min(26, (r.radius || 10) * 1.2))) * s;
+      const rad = r.radius ? r.radius / unit : 10;     // polomer v jednotkách plátna 1024
+      const fs = (labelFn ? Math.max(7, Math.min(13, rad * 0.8)) : Math.max(9, Math.min(26, rad * 1.2))) * unit * s;
       ctx.font = `bold ${Math.round(fs)}px sans-serif`;
       ctx.lineWidth = Math.max(2, fs / 5); ctx.strokeStyle = '#ffffff';
       ctx.strokeText(t, p[0] * s, p[1] * s);

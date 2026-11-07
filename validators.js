@@ -68,12 +68,12 @@
         ruleId: 'viewBox.missing',
         severity: 'error',
         title: 'Chýba atribút viewBox',
-        detail: 'Root <svg> musí mať viewBox="0 0 1024 1024".',
+        detail: 'Root <svg> musí mať viewBox.',
         element: svg,
         snippet: snippetOf(svg),
         fixable: true,
         fixId: 'addViewBox',
-        hint: 'Auto-fix doplní viewBox="0 0 1024 1024".',
+        hint: 'Auto-fix doplní viewBox podľa width/height (bez nich "0 0 1024 1024").',
       });
       return issues;
     }
@@ -90,28 +90,17 @@
       });
       return issues;
     }
-    const [x, y, w, h] = parts;
-    if (Math.abs(w - h) > 0.5) {
+    // Rozmer a pomer strán sa nekontrolujú ani neopravujú — rozmer vloženého súboru sa nemení.
+    const [, , w, h] = parts;
+    if (!(w > 0 && h > 0)) {
       issues.push({
-        ruleId: 'viewBox.notSquare',
+        ruleId: 'viewBox.invalid',
         severity: 'error',
-        title: `viewBox nie je štvorcový (${w}×${h})`,
-        detail: 'Pomer strán musí byť 1:1.',
+        title: `Neplatný viewBox: "${vb}"`,
+        detail: 'Šírka aj výška viewBoxu musia byť kladné.',
         element: svg,
         snippet: `viewBox="${vb}"`,
         fixable: false,
-      });
-    } else if (w !== 1024 || h !== 1024 || x !== 0 || y !== 0) {
-      issues.push({
-        ruleId: 'viewBox.notStandard',
-        severity: 'warning',
-        title: `viewBox je "${vb}" namiesto "0 0 1024 1024"`,
-        detail: 'Špecifikácia odporúča presne 1024×1024.',
-        element: svg,
-        snippet: `viewBox="${vb}"`,
-        fixable: true,
-        fixId: 'normalizeViewBox',
-        hint: 'Auto-fix prepíše viewBox na "0 0 1024 1024" (geometria sa neprepočítava).',
       });
     }
     return issues;
@@ -384,16 +373,19 @@
   function rule_regionSize(doc) {
     // bbox kontrola — funguje len ak je SVG mounted v DOM
     const issues = [];
+    // 60 jednotiek plátna s kratšou stranou 1024, prepočítané na viewBox súboru
+    const vb = doc.viewBox && doc.viewBox.baseVal && doc.viewBox.baseVal.width ? doc.viewBox.baseVal : null;
+    const min = 60 * (vb ? Math.min(vb.width, vb.height) / 1024 : 1);
     for (const el of doc.querySelectorAll('[data-region]')) {
       if (typeof el.getBBox !== 'function') continue;
       let bb;
       try { bb = el.getBBox(); } catch (e) { continue; }
-      if (bb.width < 60 || bb.height < 60) {
+      if (bb.width < min || bb.height < min) {
         issues.push({
           ruleId: 'region.tooSmall',
           severity: 'info',
           title: `Malá oblasť (${Math.round(bb.width)}×${Math.round(bb.height)})`,
-          detail: 'Pod 60×60 v jednotkách viewBoxu — dieťa to ťažko trafí prstom. Zvážte zamknutie (data-locked="true" a bez data-region).',
+          detail: 'Pod 60×60 (pri kratšej strane 1024) — dieťa to ťažko trafí prstom. Zvážte zamknutie (data-locked="true" a bez data-region).',
           element: el,
           snippet: snippetOf(el),
           fixable: false,

@@ -221,6 +221,11 @@
   // ── Hlavná transformácia path-ov (regióny vs. obrysy)
   function processPaths(svgRoot) {
     const paths = svgRoot.getElementsByTagName('path');
+    // hrúbka obrysu 4 jednotky plátna s kratšou stranou 1024; pri inom viewBoxe sa prepočíta,
+    // aby čiara vyzerala rovnako (rozmer súboru sa nemení)
+    const vb = (svgRoot.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    const minSide = vb.length === 4 && vb[2] > 0 && vb[3] > 0 ? Math.min(vb[2], vb[3]) : 1024;
+    const strokeW = String(Math.round(4 * minSide / 1024 * 1000) / 1000);
     let regions = 0;
     let locked = 0;
     let fallbackCounter = 1;
@@ -247,7 +252,7 @@
         p.removeAttribute('style');
         p.setAttribute('fill', '#1a1a1a');
         p.setAttribute('stroke', '#1a1a1a');
-        p.setAttribute('stroke-width', '4');
+        p.setAttribute('stroke-width', strokeW);
         p.setAttribute('stroke-linecap', 'round');
         p.setAttribute('stroke-linejoin', 'round');
         if (!p.hasAttribute('data-locked')) p.setAttribute('data-locked', 'true');

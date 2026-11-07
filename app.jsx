@@ -597,19 +597,23 @@ function App() {
     const text = serializeSvg(false);
     if (!text) return;
     // SVG → PNG cez canvas
-    const RENDER_SIZE = 2048; // ostrejší výstup (2× viewBox)
+    // kratšia strana 2048 px, dlhšia podľa pomeru strán viewBoxu
+    const vbm = (text.match(/<svg\b[^>]*\bviewBox="([^"]+)"/) || [])[1];
+    const vbp = (vbm || '').trim().split(/[\s,]+/).map(Number);
+    const vw = vbp.length === 4 && vbp[2] > 0 ? vbp[2] : 1024, vh = vbp.length === 4 && vbp[3] > 0 ? vbp[3] : 1024;
+    const RW = Math.round(2048 * vw / Math.min(vw, vh)), RH = Math.round(2048 * vh / Math.min(vw, vh));
     const blob = new Blob([text], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = RENDER_SIZE;
-      canvas.height = RENDER_SIZE;
+      canvas.width = RW;
+      canvas.height = RH;
       const ctx = canvas.getContext('2d');
       // biele pozadie (PNG nemá natívne biele plátno ako SVG s viewBox)
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE);
-      ctx.drawImage(img, 0, 0, RENDER_SIZE, RENDER_SIZE);
+      ctx.fillRect(0, 0, RW, RH);
+      ctx.drawImage(img, 0, 0, RW, RH);
       URL.revokeObjectURL(url);
       canvas.toBlob((pngBlob) => {
         if (!pngBlob) {
@@ -864,7 +868,7 @@ function App() {
               <button className="btn-secondary" onClick={runSvgo} disabled={svgoRunning} title="Spustí SVGO optimalizáciu — zapečie transformy do path data, odstráni metadata, vyčistí súbor">
                 {svgoRunning ? 'SVGO beží…' : 'Spustiť SVGO'}
               </button>
-              <button className="btn-secondary" onClick={downloadFixed} title="Vyfarbený obrázok ako PNG (2048×2048, s vašimi farbami)">
+              <button className="btn-secondary" onClick={downloadFixed} title="Vyfarbený obrázok ako PNG (kratšia strana 2048 px, s vašimi farbami)">
                 Stiahnuť PNG
               </button>
               <button className="btn-secondary" onClick={downloadClean} title="SVG s vrátenými bielymi oblasťami (bez vašich farieb)">

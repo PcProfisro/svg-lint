@@ -11,11 +11,10 @@
 
   // Každý fix dostane (svgRoot, issueElement, issue) a vykoná mutáciu.
   const FIXES = {
+    // viewBox z width/height, aby sa rozmer nezmenil; bez nich 1024 × 1024
     addViewBox(svg) {
-      svg.setAttribute('viewBox', '0 0 1024 1024');
-    },
-    normalizeViewBox(svg) {
-      svg.setAttribute('viewBox', '0 0 1024 1024');
+      const w = parseFloat(svg.getAttribute('width')), h = parseFloat(svg.getAttribute('height'));
+      svg.setAttribute('viewBox', w > 0 && h > 0 ? `0 0 ${w} ${h}` : '0 0 1024 1024');
     },
     removeRootDims(svg) {
       svg.removeAttribute('width');
